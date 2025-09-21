@@ -1,4 +1,4 @@
-const CACHE_NAME = "stoskalk-v1";
+const CACHE_NAME = "stoskalk-v3";
 const FILES_TO_CACHE = [
   "./",
   "./index.html",
