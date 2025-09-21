@@ -160,27 +160,34 @@
   function rerenderIfInputs(){const t=parseFloat($("konaTop").value),b=parseFloat($("konaBottom").value),s=parseFloat($("konaSlope").value);if(!isNaN(t)&&!isNaN(b)&&!isNaN(s)) renderKona(t,b,s,currentRot);}
   function findBestRotation(topD,botD,slopeDeg){let bestAngle=0,bestScore=-Infinity;for(let ang=0;ang<180;ang+=5){const box=computeKonaBBox(topD,botD,slopeDeg,ang);const m=10;const fitP=Math.min((210-2*m)/box.w,(297-2*m)/box.h);const fitL=Math.min((297-2*m)/box.w,(210-2*m)/box.h);const score=Math.max(fitP,fitL);if(score>bestScore){bestScore=score;bestAngle=ang;}}return bestAngle;}
   function computeKonaBBox(topD,botD,slopeDeg,rot){const pts=generateKonaPoints(topD,botD,slopeDeg,rot);let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;pts.inner.concat(pts.outer).concat(pts.gens.flat()).forEach(([x,y])=>{if(x<minX)minX=x;if(y<minY)minY=y;if(x>maxX)maxX=x;if(y>maxY)maxY=y;});return {w:maxX-minX,h:maxY-minY};}
-  function generateKonaPoints(topD, botD, slopeDeg, rotDeg){
-    const Rb = botD/2;  // bottom radius (fixed)
-    const Rt = topD/2;  // top radius
-    const dR = Rb - Rt;
-    const alpha = slopeDeg * Math.PI / 180;
-    const H = dR / Math.tan(alpha); // true vertical height from diameters + slope
-    const N = 12;
-    const slant = Math.sqrt(H*H + dR*dR);
-    const S_top = slant * Rt / dR;
-    const S_btm = slant * Rb / dR;
-    const theta_total = 2*Math.PI*Rb/slant;
-    const dtheta = theta_total/N;
-    const thetas = Array.from({length:N},(_,i)=>i*dtheta);
-    const inner = thetas.map(t => [S_top*Math.cos(t), S_top*Math.sin(t)]);
-    const outer = thetas.map(t => [S_btm*Math.cos(t), S_btm*Math.sin(t)]);
-    const ang=(rotDeg*Math.PI)/180;
-    const rot=([x,y])=>[x*Math.cos(ang)-y*Math.sin(ang), x*Math.sin(ang)+y*Math.cos(ang)];
-    const innerR=inner.map(rot), outerR=outer.map(rot);
-    const gens=innerR.map((p,i)=>[p,outerR[i]]);
-    return {inner:innerR, outer:outerR, gens};
-  }
+function generateKonaPoints(topD, botD, slopeDeg, rotDeg) {
+  const Rb = botD / 2;  // bottom radius (fixed)
+  const Rt = topD / 2;  // top radius
+  const dR = Rb - Rt;
+  const alpha = slopeDeg * Math.PI / 180;
+  const H = dR / Math.tan(alpha); // true vertical height from diameters + slope
+
+  const N = 12;
+  const slant = Math.sqrt(H*H + dR*dR);
+  const S_top = slant * Rt / dR;
+  const S_btm = slant * Rb / dR;
+
+  const theta_total = 2 * Math.PI * Rb / slant;
+  const dtheta = theta_total / N;
+  const thetas = Array.from({length: N}, (_, i) => i * dtheta);
+
+  const inner = thetas.map(t => [S_top * Math.cos(t), S_top * Math.sin(t)]);
+  const outer = thetas.map(t => [S_btm * Math.cos(t), S_btm * Math.sin(t)]);
+
+  const ang = (rotDeg * Math.PI) / 180;
+  const rot = ([x, y]) => [x * Math.cos(ang) - y * Math.sin(ang), x * Math.sin(ang) + y * Math.cos(ang)];
+
+  const innerR = inner.map(rot);
+  const outerR = outer.map(rot);
+  const gens = innerR.map((p, i) => [p, outerR[i]]);
+
+  return { inner: innerR, outer: outerR, gens };
+}
   });
 
 })();
