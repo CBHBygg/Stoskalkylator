@@ -206,3 +206,36 @@ function hookExport(previewId, svgBtnId, pdfBtnId, printBtnId, filenameBase) {
     win.close();
   });
 }
+\n\n
+function exportMultiPagePDF(previewId, filenameBase) {
+  const svg = document.getElementById(previewId).querySelector("svg");
+  const bbox = svg.viewBox.baseVal;
+  const svgWidth = bbox.width;
+  const svgHeight = bbox.height;
+
+  const pageW = 210; // A4 width mm
+  const pageH = 297; // A4 height mm
+
+  const pdf = new jsPDF({ unit: "mm", format: "a4" });
+
+  const cols = Math.ceil(svgWidth / pageW);
+  const rows = Math.ceil(svgHeight / pageH);
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (!(r === 0 && c === 0)) pdf.addPage();
+
+      const xOffset = -c * pageW;
+      const yOffset = -r * pageH;
+
+      svg2pdf(svg, pdf, {
+        xOffset: xOffset,
+        yOffset: yOffset,
+        scale: 1,
+        preserveAspectRatio: false
+      });
+    }
+  }
+
+  pdf.save(filenameBase + ".pdf");
+}
