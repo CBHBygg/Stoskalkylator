@@ -1,9 +1,9 @@
-const CACHE_NAME = "stoskalk-v8";
+const CACHE_NAME = "stoskalk-v9";
 const FILES_TO_CACHE = [
   "./",
   "./index.html",
   "./app.js",
-  "./style.css",
+  "./styles.css",
   "./vendor/jspdf.umd.min.js",
   "./vendor/svg2pdf.umd.min.js",
   "./icons/icon-192.png",
