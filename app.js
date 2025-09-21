@@ -162,10 +162,10 @@ function hookExport(previewId, svgBtnId, pdfBtnId, printBtnId, filenameBase) {
   const pdfBtn = document.getElementById(pdfBtnId);
   const printBtn = document.getElementById(printBtnId);
 
-  // Save as SVG
+  // Save as SVG (single file)
   svgBtn.addEventListener("click", () => {
-    const svg = document.getElementById(previewId).querySelector("svg");
-    const blob = new Blob([svg.outerHTML], { type: "image/svg+xml" });
+    const svgEl = document.getElementById(previewId).querySelector("svg");
+    const blob = new Blob([svgEl.outerHTML], { type: "image/svg+xml" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -228,6 +228,7 @@ function getSvgSizeMM(svg) {
 }
 
 function exportMultiPagePDF(previewId, filenameBase) {
+  const { jsPDF } = window.jspdf; // UMD access
   const svg = document.getElementById(previewId).querySelector("svg");
   const size = getSvgSizeMM(svg);
   const svgWidth = size.w;

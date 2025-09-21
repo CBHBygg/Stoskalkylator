@@ -1,6 +1,4 @@
-const CACHE_NAME = "stoskalk-v6";
-const FILES_TO_CACHE = [
-  "./",
+const CACHE_NAME = "stoskalk-v7";./",
   "./index.html",
   "./styles.css",
   "./app.js",
