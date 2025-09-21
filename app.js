@@ -1,4 +1,3 @@
-
 /* ---------------- Tabs ---------------- */
 document.querySelectorAll('.tab-btn').forEach(btn=>{
   btn.addEventListener('click', ()=>{
@@ -155,36 +154,6 @@ function renderKona(topD,botD,slopeDeg,rot){
 }
 
 /* ---------------- Export helpers (offline) ---------------- */
-function hookExport(previewId, svgBtnId, pdfBtnId, printBtnId, filenameBase) {
-  const svgBtn = document.getElementById(svgBtnId);
-  const pdfBtn = document.getElementById(pdfBtnId);
-  const printBtn = document.getElementById(printBtnId);
-
-  // Save as SVG
-  svgBtn.addEventListener("click", () => {
-    const svg = document.getElementById(previewId).querySelector("svg");
-    const blob = new Blob([svg.outerHTML], { type: "image/svg+xml" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filenameBase + ".svg";
-    a.click();
-    URL.revokeObjectURL(url);
-  });
-
-  // Save as PDF
-  pdfBtn.addEventListener("click", () => {
-    let svg = document.getElementById(previewId).querySelector("svg");
-
-    // 🔑 Auto-rotation for Kona patterns
-    if (filenameBase.startsWith("kona")) {
-      const topD = parseFloat(document.getElementById("konaTop").value);
-      const botD = parseFloat(document.getElementById("konaBottom").value);
-      const slopeDeg = parseFloat(document.getElementById("konaSlope").value);
-      const bestAngle = findBestRotation(topD, botD, slopeDeg);
-      renderKona(topD, botD, slopeDeg, bestAngle);
-      svg = document.getElementById(previewId).querySelector("svg");
-    }
 
     const pdf = new jsPDF({ unit: "mm", format: "a4" });
 
@@ -207,19 +176,97 @@ function hookExport(previewId, svgBtnId, pdfBtnId, printBtnId, filenameBase) {
   });
 }
 \n\n
+  }
+
+  pdf.save(filenameBase + ".pdf");
+}
+
+
+
+// ---------------- Export helpers ----------------
+function hookExport(previewId, svgBtnId, pdfBtnId, printBtnId, filenameBase) {
+  const svgBtn = document.getElementById(svgBtnId);
+  const pdfBtn = document.getElementById(pdfBtnId);
+  const printBtn = document.getElementById(printBtnId);
+
+  // Save as SVG
+  svgBtn.addEventListener("click", () => {
+    const svg = document.getElementById(previewId).querySelector("svg");
+    const blob = new Blob([svg.outerHTML], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filenameBase + ".svg";
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // Save as multi-page PDF
+  pdfBtn.addEventListener("click", () => {
+    if (filenameBase.startsWith("kona")) {
+      const topD = parseFloat(document.getElementById("konaTop").value);
+      const botD = parseFloat(document.getElementById("konaBottom").value);
+      const slopeDeg = parseFloat(document.getElementById("konaSlope").value);
+      const bestAngle = findBestRotation(topD, botD, slopeDeg);
+      renderKona(topD, botD, slopeDeg, bestAngle);
+    }
+    exportMultiPagePDF(previewId, filenameBase);
+  });
+
+  // Print directly
+  printBtn.addEventListener("click", () => {
+    const win = window.open("");
+    win.document.write(document.getElementById(previewId).innerHTML);
+    win.print();
+    win.close();
+  });
+}
+
+function __mmFromAttr(attr) {
+  if (!attr) return null;
+  const v = String(attr).trim();
+  const num = parseFloat(v);
+  if (isNaN(num)) return null;
+  if (v.endsWith("mm")) return num;
+  if (v.endsWith("cm")) return num * 10;
+  if (v.endsWith("in")) return num * 25.4;
+  if (v.endsWith("px")) return num * (25.4 / 96); // assume 96dpi
+  return num;
+}
+
+function getSvgSizeMM(svg) {
+  let w = __mmFromAttr(svg.getAttribute("width"));
+  let h = __mmFromAttr(svg.getAttribute("height"));
+  if (w == null || h == null) {
+    const vb = svg.viewBox && svg.viewBox.baseVal ? svg.viewBox.baseVal : null;
+    if (vb) {
+      w = w ?? vb.width;
+      h = h ?? vb.height;
+    }
+  }
+  if (w == null || h == null) {
+    try {
+      const bb = svg.getBBox();
+      w = w ?? bb.width;
+      h = h ?? bb.height;
+    } catch (e) {}
+  }
+  return { w: w || 210, h: h || 297 };
+}
+
 function exportMultiPagePDF(previewId, filenameBase) {
   const svg = document.getElementById(previewId).querySelector("svg");
-  const bbox = svg.viewBox.baseVal;
-  const svgWidth = bbox.width;
-  const svgHeight = bbox.height;
+  const size = getSvgSizeMM(svg);
+  const svgWidth = size.w;
+  const svgHeight = size.h;
 
   const pageW = 210; // A4 width mm
   const pageH = 297; // A4 height mm
 
-  const pdf = new jsPDF({ unit: "mm", format: "a4" });
-
   const cols = Math.ceil(svgWidth / pageW);
   const rows = Math.ceil(svgHeight / pageH);
+
+  const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
