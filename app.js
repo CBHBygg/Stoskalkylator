@@ -155,76 +155,70 @@ function renderKona(topD,botD,slopeDeg,rot){
 }
 
 /* ---------------- Export helpers (offline) ---------------- */
-
-// ---------------- Export helpers (appended safely at end) ----------------
-function hookExport(previewId, svgBtnId, pdfBtnId, printBtnId, filenameBase) {
-  const svgBtn = document.getElementById(svgBtnId);
-  const pdfBtn = document.getElementById(pdfBtnId);
-  const printBtn = document.getElementById(printBtnId);
-
-  // Save as SVG (single file)
-  svgBtn.addEventListener("click", () => {
-    const svgEl = document.getElementById(previewId).querySelector("svg");
-    const blob = new Blob([svgEl.outerHTML], { type: "image/svg+xml" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filenameBase + ".svg";
-    a.click();
-    URL.revokeObjectURL(url);
-  });
-
-  // Save as multi-page PDF (true 1:1 tiling)
-  pdfBtn.addEventListener("click", () => {
-    if (filenameBase.startsWith("kona")) {
-      const topD = parseFloat(document.getElementById("konaTop").value);
-      const botD = parseFloat(document.getElementById("konaBottom").value);
-      const slopeDeg = parseFloat(document.getElementById("konaSlope").value);
-      const bestAngle = findBestRotation(topD, botD, slopeDeg);
-      renderKona(topD, botD, slopeDeg, bestAngle);
-    }
-    exportMultiPagePDF(previewId, filenameBase);
-  });
-
-  // Print directly (browser handles tiling)
-  printBtn.addEventListener("click", () => {
-    const win = window.open("");
-    win.document.write(document.getElementById(previewId).innerHTML);
-    win.print();
-    win.close();
-  });
-}
-
-function __mmFromAttr(attr) {
-  if (!attr) return null;
-  const v = String(attr).trim();
-  const num = parseFloat(v);
-  if (isNaN(num)) return null;
-  if (v.endsWith("mm")) return num;
-  if (v.endsWith("cm")) return num * 10;
-  if (v.endsWith("in")) return num * 25.4;
-  if (v.endsWith("px")) return num * (25.4 / 96);
-  return num; // unitless -> assume mm
-}
-
-function getSvgSizeMM(svg) {
-  let w = __mmFromAttr(svg.getAttribute("width"));
-  let h = __mmFromAttr(svg.getAttribute("height"));
-  if (w == null || h == null) {
-    const vb = svg.viewBox && svg.viewBox.baseVal ? svg.viewBox.baseVal : null;
-    if (vb) {
-      if (w == null) w = vb.width;
-      if (h == null) h = vb.height;
-    }
+function hookExport(previewId, svgBtnId, pdfBtnId, printBtnId, baseName){
+  const svgEl=document.querySelector(`#${previewId} svg`);
+  // SVG
+  document.getElementById(svgBtnId).onclick=()=>{
+    const blob=new Blob([svgEl.outerHTML],{type:'image/svg+xml'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download=baseName+'.svg'; a.click();
+  };
+  // PDF (normalize svg2pdf across builds)
+  document.getElementById(pdfBtnId).onclick=()=>{
+  // Robust detection of jsPDF + svg2pdf across UMD/global builds
+  function __getJsPDF(){
+    if (window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
+    if (typeof window.jsPDF === 'function') return window.jsPDF;
+    return null;
   }
-  if (w == null || h == null) {
-    try {
-      const bb = svg.getBBox();
-      if (w == null) w = bb.width;
-      if (h == null) h = bb.height;
-    } catch (e) {}
+  function __getSvg2pdf(){
+    const s = window.svg2pdf;
+    if (typeof s === 'function') return s;
+    if (s && typeof s.svg2pdf === 'function') return s.svg2pdf;
+    if (s && s.default && typeof s.default === 'function') return s.default;
+    return null;
   }
-  return { w: w || 210, h: h || 297 };
+
+  const JsPDFCtor = __getJsPDF();
+  const svg2pdfFn = __getSvg2pdf();   // the only definition
+
+  if(!JsPDFCtor || !svg2pdfFn){
+    alert('PDF-export misslyckades: kunde inte hitta jsPDF/svg2pdf.');
+    return;
+  }
+  try{
+    const doc = new JsPDFCtor({orientation:'landscape', unit:'mm', format:'a4'});
+    Promise.resolve(svg2pdfFn(svgEl, doc, {x:10, y:10}))
+      .then(()=>{
+        doc.save(baseName + '.pdf');
+      })
+      .catch(err=>{
+        console.error(err);
+        alert('PDF-export misslyckades under ritning: ' + (err && err.message ? err.message : 'okänt fel'));
+      });
+  }catch(err){
+    console.error(err);
+    alert('PDF-export misslyckades: ' + (err && err.message ? err.message : 'okänt fel'));
+  }
+
+    
+    if(svg2pdfFn && typeof svg2pdfFn !== 'function' && typeof svg2pdfFn.default==='function'){
+      svg2pdfFn = svg2pdfFn.default;
+    }
+    if(!jsPDF || typeof svg2pdfFn!=='function'){
+      alert('PDF-export misslyckades: kunde inte hitta jsPDF/svg2pdf.');
+      return;
+    }
+    const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+    svg2pdfFn(svgEl,doc,{x:10,y:10}); doc.save(baseName+'.pdf');
+  };
+  // Print
+  document.getElementById(printBtnId).onclick=()=>{
+    const w=window.open('');
+    w.document.write('<!doctype html><html><head><title>Print</title></head><body>');
+    w.document.write(svgEl.outerHTML);
+    w.document.write('</body></html>'); w.document.close(); w.focus(); w.print();
+  };
 }
 
 function exportMultiPagePDF(previewId, filenameBase) {
@@ -247,7 +241,7 @@ function exportMultiPagePDF(previewId, filenameBase) {
       if (!(r === 0 && c === 0)) pdf.addPage();
       const xOffset = -c * pageW;
       const yOffset = -r * pageH;
-      svg2pdf(svg, pdf, {
+      window.svg2pdf(svg, pdf, {
         xOffset: xOffset,
         yOffset: yOffset,
         scale: 1,
