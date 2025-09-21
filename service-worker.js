@@ -1,13 +1,13 @@
-const CACHE_NAME = "stoskalk-v7";
+const CACHE_NAME = "stoskalk-v8";
 const FILES_TO_CACHE = [
-  "/",
-  "/index.html",
-  "/app.js",
-  "/style.css",
-  "/vendor/jspdf.umd.min.js",
-  "/vendor/svg2pdf.umd.min.js",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png"
+  "./",
+  "./index.html",
+  "./app.js",
+  "./style.css",
+  "./vendor/jspdf.umd.min.js",
+  "./vendor/svg2pdf.umd.min.js",
+  "./icons/icon-192.png",
+  "./icons/icon-512.png"
 ];
 
 self.addEventListener("install", event => {
