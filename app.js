@@ -160,114 +160,47 @@
   function rerenderIfInputs(){const t=parseFloat($("konaTop").value),b=parseFloat($("konaBottom").value),s=parseFloat($("konaSlope").value);if(!isNaN(t)&&!isNaN(b)&&!isNaN(s)) renderKona(t,b,s,currentRot);}
   function findBestRotation(topD,botD,slopeDeg){let bestAngle=0,bestScore=-Infinity;for(let ang=0;ang<180;ang+=5){const box=computeKonaBBox(topD,botD,slopeDeg,ang);const m=10;const fitP=Math.min((210-2*m)/box.w,(297-2*m)/box.h);const fitL=Math.min((297-2*m)/box.w,(210-2*m)/box.h);const score=Math.max(fitP,fitL);if(score>bestScore){bestScore=score;bestAngle=ang;}}return bestAngle;}
   function computeKonaBBox(topD,botD,slopeDeg,rot){const pts=generateKonaPoints(topD,botD,slopeDeg,rot);let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;pts.inner.concat(pts.outer).concat(pts.gens.flat()).forEach(([x,y])=>{if(x<minX)minX=x;if(y<minY)minY=y;if(x>maxX)maxX=x;if(y>maxY)maxY=y;});return {w:maxX-minX,h:maxY-minY};}
-  function generateKonaPoints(topD, botD, slopeDeg, rotDeg) {
-  // Geometry for truncated cone with an oblique top cut forced upwards from the bottom rim.
-  // Inputs in millimeters and degrees.
-  const Rb = botD / 2;     // bottom radius (fixed, maximum)
-  const Rt = topD / 2;     // nominal top radius when height is reached
+function generateKonaPoints(topD, botD, slopeDeg, rotDeg) {
+  const N = 12;
+  const Rb = botD / 2;
+  const Rt = topD / 2;
   const dR = Rb - Rt;
-  const alpha = (slopeDeg * Math.PI) / 180;
+  const alpha = slopeDeg * Math.PI / 180;
 
-  // Minimal-height assumption: the sloped cut just touches the bottom rim on the low side (y=0)
-  // and reaches the nominal top radius on the high side (y=H). This keeps the pattern as low as possible.
-  const H = Math.max(0.001, 2 * Rb * Math.tan(alpha));  // vertical height (>= 0)
+  // minimal vertical height
+  const Hmin = dR / Math.tan(alpha);
 
-  // Mapping from 3D radius to developed radius from the apex
-  const slant = Math.hypot(H, dR);
-  const k = slant / dR;
+  // slant difference and mapping
+  const slant_diff = Math.sqrt(Hmin*Hmin + dR*dR);
+  const k = slant_diff / dR;
 
-  // Development sector angle for the outer arc
-  const thetaTotal = 2 * Math.PI * dR / slant;
+  // wedge angles
+  const theta_total = 2 * Math.PI / k;
+  const dtheta = theta_total / N;
+  const thetas = Array.from({length:N},(_,i)=>i*dtheta);
+  const sel = [0,1,2,3,4,5,6]; // half pattern
 
-  const N = 180; // segments around the pattern for smoothness
-  const rot = (rotDeg * Math.PI) / 180;
+  // outer arc (bottom radius fixed)
+  const S_outer = k * Rb;
 
-  const inner = [];
-  const outer = [];
-  const gens = [];
+  // inner arc varies with oblique cut
+  const phi = Array.from({length:N},(_,i)=>2*Math.PI*i/N);
+  const r_inner = sel.map(i => Rb - dR*(1 - Math.cos(phi[i]))/2);
+  let S_inner = r_inner.map(r => k*r);
 
-  for (let i = 0; i <= N; i++) {
-    const t = i / N;
-    const theta = t * thetaTotal;
+  // extend every generator by +30 mm (reduce inner radii)
+  S_inner = S_inner.map(s => Math.max(0, s - 30));
 
-    // Physical circumferential angle around the cone surface (0..2π), aligned with rotation
-    const phi = 2 * Math.PI * t + rot;
+  const inner = sel.map((i,idx) => [S_inner[idx]*Math.cos(thetas[i]), S_inner[idx]*Math.sin(thetas[i])]);
+  const outer = sel.map(i => [S_outer*Math.cos(thetas[i]), S_outer*Math.sin(thetas[i])]);
 
-    // Height of the oblique cut at this circumferential angle (0 at low side, H at high side)
-    const yCut = 0.5 * H * (1 - Math.cos(phi)); // = H/2 - (H/2) cos(phi)
-
-    // Local radius at the cut along the cone generatrix
-    const rTop = Rb - (dR / H) * yCut;
-
-    // Developed radii from apex
-    const S_outer = k * Rb;      // constant
-    const S_inner = k * rTop;    // varies with phi
-
-    const xi = S_inner * Math.cos(theta);
-    const yi = S_inner * Math.sin(theta);
-    const xo = S_outer * Math.cos(theta);
-    const yo = S_outer * Math.sin(theta);
-
-    inner.push([xi, yi]);
-    outer.push([xo, yo]);
-    gens.push([[xi, yi], [xo, yo]]);
-  }
-
-  return { inner, outer, gens };
+  // apply rotation
+  const ang = (rotDeg * Math.PI) / 180;
+  const rot = ([x,y]) => [x*Math.cos(ang)-y*Math.sin(ang), x*Math.sin(ang)+y*Math.cos(ang)];
+  const innerR = inner.map(rot), outerR = outer.map(rot);
+  const gens = innerR.map((p,i)=>[p,outerR[i]]);
+  return {inner:innerR, outer:outerR, gens, sel};
 }
-  function renderKona(topD, botD, slopeDeg, rot) {
-  const pts = generateKonaPoints(topD, botD, slopeDeg, rot);
-  const gens = pts.gens;
-
-  // Bounding box
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  pts.inner.concat(pts.outer).concat(gens.flat()).forEach(([x, y]) => {
-    if (x < minX) minX = x;
-    if (y < minY) minY = y;
-    if (x > maxX) maxX = x;
-    if (y > maxY) maxY = y;
-  });
-
-  const margin = 5;
-  minX -= margin; minY -= margin;
-  maxX += margin; maxY += margin;
-
-  const width = maxX - minX;
-  const height = maxY - minY;
-
-  const pl = arr => arr.map(([x, y]) => `${(x - minX).toFixed(2)},${(y - minY).toFixed(2)}`).join(" ");
-
-  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}mm" height="${height}mm" viewBox="0 0 ${width} ${height}" shape-rendering="geometricPrecision">`;
-
-  // inner and outer boundaries
-  svg += `<polyline points="${pl(pts.inner)}" fill="none" stroke="black" stroke-width="0.4"/>`;
-  svg += `<polyline points="${pl(pts.outer)}" fill="none" stroke="black" stroke-width="0.4"/>`;
-
-  // generator lines
-  gens.forEach(seg => {
-    svg += `<line x1="${(seg[0][0]-minX).toFixed(2)}" y1="${(seg[0][1]-minY).toFixed(2)}" x2="${(seg[1][0]-minX).toFixed(2)}" y2="${(seg[1][1]-minY).toFixed(2)}" stroke="black" stroke-width="0.3"/>`;
-  });
-
-  svg += `</svg>`;
-
-  // render into DOM
-  $("konaPreview").innerHTML = svg;
-  $("konaMeta").textContent = "";
-  $("konaResult").style.display = 'block';
-
-  // wire up exporters on this preview
-  hookExport("konaPreview","konaSvg","konaPdf","konaPrint","kona_monster");
-}
-
-  // --- Tabs ---
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      btn.classList.add('active');
-      const targetId = 'tab-' + btn.dataset.tab;
-      document.getElementById(targetId).classList.add('active');
-    });
   });
 
 })();
