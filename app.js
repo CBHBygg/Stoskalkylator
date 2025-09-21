@@ -5,16 +5,23 @@
   const A4 = { wMm: 210, hMm: 297, marginMm: 5 };
   const $ = (id) => document.getElementById(id);
 
-  function getLibs() {
-    const jsPDF = window.jspdf?.jsPDF || window.jsPDF;
-    const svg2pdf = window.svg2pdf || window.SVG2PDF || window.svg2pdf?.default;
-    console.log("DEBUG libs:", { jsPDF, svg2pdf });
-    if (!jsPDF || !svg2pdf) {
-      alert("PDF-export misslyckades: jsPDF/svg2pdf inte hittad.");
-      throw new Error("Libraries not found");
-    }
-    return { jsPDF, svg2pdf };
+function getLibs() {
+  const jsPDF = window.jspdf?.jsPDF || window.jsPDF;
+
+  // pick the right export
+  let svg2pdf = window.svg2pdf || window.SVG2PDF;
+  if (svg2pdf && typeof svg2pdf !== "function" && typeof svg2pdf.default === "function") {
+    svg2pdf = svg2pdf.default;
   }
+
+  console.log("DEBUG libs:", { jsPDF, svg2pdf });
+
+  if (!jsPDF || !svg2pdf) {
+    alert("PDF-export misslyckades: jsPDF/svg2pdf inte hittad.");
+    throw new Error("Libraries not found");
+  }
+  return { jsPDF, svg2pdf };
+}
 
   function exportSVG(previewId, filename) {
     const svg = document.querySelector(`#${previewId} svg`);
