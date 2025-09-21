@@ -8,13 +8,19 @@
 function getLibs() {
   const jsPDF = window.jspdf?.jsPDF || window.jsPDF;
 
-  // pick the right export
   let svg2pdf = window.svg2pdf || window.SVG2PDF;
-  if (svg2pdf && typeof svg2pdf !== "function" && typeof svg2pdf.default === "function") {
-    svg2pdf = svg2pdf.default;
+
+  // ✅ unwrap if it's an object with .default
+  if (svg2pdf && typeof svg2pdf !== "function") {
+    if (typeof svg2pdf.default === "function") {
+      svg2pdf = svg2pdf.default;
+    } else {
+      console.warn("svg2pdf global is not a function:", svg2pdf);
+      svg2pdf = null;
+    }
   }
 
-  console.log("DEBUG libs:", { jsPDF, svg2pdf });
+  console.log("DEBUG libs (final):", { jsPDF, svg2pdf });
 
   if (!jsPDF || !svg2pdf) {
     alert("PDF-export misslyckades: jsPDF/svg2pdf inte hittad.");
@@ -22,6 +28,7 @@ function getLibs() {
   }
   return { jsPDF, svg2pdf };
 }
+
 
   function exportSVG(previewId, filename) {
     const svg = document.querySelector(`#${previewId} svg`);
