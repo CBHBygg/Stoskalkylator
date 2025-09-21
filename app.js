@@ -10,10 +10,12 @@ function getLibs() {
 
   let svg2pdf = window.svg2pdf || window.SVG2PDF;
 
-  // ✅ unwrap if it's an object with .default
+  // Handle different bundle shapes
   if (svg2pdf && typeof svg2pdf !== "function") {
     if (typeof svg2pdf.default === "function") {
       svg2pdf = svg2pdf.default;
+    } else if (typeof svg2pdf.svg2pdf === "function") {
+      svg2pdf = svg2pdf.svg2pdf;   // ✅ your current bundle
     } else {
       console.warn("svg2pdf global is not a function:", svg2pdf);
       svg2pdf = null;
@@ -28,6 +30,7 @@ function getLibs() {
   }
   return { jsPDF, svg2pdf };
 }
+
 
 
   function exportSVG(previewId, filename) {
