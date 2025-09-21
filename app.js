@@ -155,18 +155,127 @@ function renderKona(topD,botD,slopeDeg,rot){
 }
 
 /* ---------------- Export helpers (offline) ---------------- */
-function hookExport(previewId, svgBtnId, pdfBtnId, printBtnId, baseName){
-  const svgEl=document.querySelector(`#${previewId} svg`);
-  // SVG
-  document.getElementById(svgBtnId)
-  // PDF (normalize svg2pdf across builds)
-  document.getElementById(pdfBtnId)
-  // Print
-  document.getElementById(printBtnId)
-}
-
 
 function exportMultiPagePDF(previewId, baseName){
-  alert('exportMultiPagePDF saknas.');
+  // Debug: see what globals we have
+  console.log("DEBUG libs:", {
+    jspdf: window.jspdf,
+    jsPDF: window.jsPDF,
+    svg2pdf: window.svg2pdf,
+    SVG2PDF: window.SVG2PDF
+  });
+
+  const JsPDFCtor =
+    (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF :
+    (typeof window.jsPDF === "function" ? window.jsPDF : null);
+
+  const svg2pdfFn =
+    (typeof window.svg2pdf === "function") ? window.svg2pdf :
+    (typeof window.SVG2PDF === "function" ? window.SVG2PDF :
+    (window.svg2pdf && typeof window.svg2pdf.default === "function" ? window.svg2pdf.default : null));
+
+  if(!JsPDFCtor || !svg2pdfFn){
+    alert("PDF-export misslyckades: jsPDF/svg2pdf inte hittad.");
+    return;
+  }
+
+  const svgEl = document.querySelector('#'+previewId+' svg');
+  if(!svgEl){ alert('Ingen SVG att exportera.'); return; }
+
+  function __mmFromAttr(attr){
+    if(!attr) return null;
+    const v=String(attr).trim();
+    const n=parseFloat(v);
+    if(Number.isNaN(n)) return null;
+    if(v.endsWith('mm')) return n;
+    if(v.endsWith('cm')) return n*10;
+    if(v.endsWith('in')) return n*25.4;
+    if(v.endsWith('px')) return n*(25.4/96);
+    return n;
+  }
+  function __getSvgSizeMM(svg){
+    let w=__mmFromAttr(svg.getAttribute('width'));
+    let h=__mmFromAttr(svg.getAttribute('height'));
+    if(w==null || h==null){
+      const vb = svg.viewBox && svg.viewBox.baseVal ? svg.viewBox.baseVal : null;
+      if(vb){
+        if(w==null) w = vb.width;
+        if(h==null) h = vb.height;
+      }
+    }
+    if((w==null || h==null) && svg.getBBox){
+      try{
+        const bb=svg.getBBox();
+        if(w==null) w=bb.width;
+        if(h==null) h=bb.height;
+      }catch(e){}
+    }
+    return {w: w||210, h: h||297};
+  }
+
+  const size=__getSvgSizeMM(svgEl);
+  const svgW=size.w, svgH=size.h;
+
+  const A4P = {w:210,h:297};
+  const A4L = {w:297,h:210};
+  function pagesFor(dim){ return Math.ceil(svgW/dim.w) * Math.ceil(svgH/dim.h); }
+  const useLandscape = pagesFor(A4L) < pagesFor(A4P);
+  const page = useLandscape ? A4L : A4P;
+
+  const doc=new JsPDFCtor({orientation: useLandscape?'landscape':'portrait', unit:'mm', format:'a4'});
+
+  const cols = Math.ceil(svgW/page.w);
+  const rows = Math.ceil(svgH/page.h);
+
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      if(!(r===0 && c===0)) doc.addPage();
+      const xOffset = -c*page.w;
+      const yOffset = -r*page.h;
+      svg2pdfFn(svgEl, doc, {
+        xOffset: xOffset,
+        yOffset: yOffset,
+        scale: 1,
+        preserveAspectRatio: false
+      });
+    }
+  }
+  doc.save(baseName+'.pdf');
 }
 
+function hookExport(previewId, svgBtnId, pdfBtnId, printBtnId, baseName){
+  var svgBtn = document.getElementById(svgBtnId);
+  var pdfBtn = document.getElementById(pdfBtnId);
+  var printBtn = document.getElementById(printBtnId);
+
+  if(svgBtn){
+    svgBtn.addEventListener('click', function(){
+      var svgEl = document.querySelector('#'+previewId+' svg');
+      if(!svgEl){ alert('Ingen SVG att exportera.'); return; }
+      var blob = new Blob([svgEl.outerHTML], {type:'image/svg+xml'});
+      var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      a.download = baseName + '.svg'; a.click();
+      URL.revokeObjectURL(a.href);
+    });
+  }
+  if(pdfBtn){
+    pdfBtn.addEventListener('click', function(){
+      exportMultiPagePDF(previewId, baseName);
+    });
+  }
+  if(printBtn){
+    printBtn.addEventListener('click', function(){
+      var svgEl = document.querySelector('#'+previewId+' svg');
+      if(!svgEl){ alert('Inget att skriva ut.'); return; }
+      var w = window.open('');
+      w.document.write('<!doctype html><html><head></head><body>' + svgEl.outerHTML + '</body></html>');
+      w.document.close(); w.focus(); w.print();
+    });
+  }
+}
+
+// Wire buttons after DOM is ready
+window.addEventListener("DOMContentLoaded", function(){
+  hookExport("stosPreview", "stosSvgBtn", "stosPdfBtn", "stosPrintBtn", "stos");
+  hookExport("konaPreview", "konaSvgBtn", "konaPdfBtn", "konaPrintBtn", "kona");
+});
