@@ -184,6 +184,10 @@ function renderKona(topD,botD,slopeDeg,rot){
 
 
 // ---------------- Export helpers ----------------
+
+
+
+// ---------------- Export helpers ----------------
 function hookExport(previewId, svgBtnId, pdfBtnId, printBtnId, filenameBase) {
   const svgBtn = document.getElementById(svgBtnId);
   const pdfBtn = document.getElementById(pdfBtnId);
