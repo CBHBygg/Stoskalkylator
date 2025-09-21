@@ -161,57 +161,55 @@
   function findBestRotation(topD,botD,slopeDeg){let bestAngle=0,bestScore=-Infinity;for(let ang=0;ang<180;ang+=5){const box=computeKonaBBox(topD,botD,slopeDeg,ang);const m=10;const fitP=Math.min((210-2*m)/box.w,(297-2*m)/box.h);const fitL=Math.min((297-2*m)/box.w,(210-2*m)/box.h);const score=Math.max(fitP,fitL);if(score>bestScore){bestScore=score;bestAngle=ang;}}return bestAngle;}
   function computeKonaBBox(topD,botD,slopeDeg,rot){const pts=generateKonaPoints(topD,botD,slopeDeg,rot);let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;pts.inner.concat(pts.outer).concat(pts.gens.flat()).forEach(([x,y])=>{if(x<minX)minX=x;if(y<minY)minY=y;if(x>maxX)maxX=x;if(y>maxY)maxY=y;});return {w:maxX-minX,h:maxY-minY};}
   function generateKonaPoints(topD, botD, slopeDeg, rotDeg) {
-  // Half-fan upward-cut generator (no hardcoded Hmin).
-  // Keeps 12 segments and shows half (indices 0..6).
   const N = 12;
   const Rb = botD / 2;
   const Rt = topD / 2;
   const dR = Rb - Rt;
   const alpha = slopeDeg * Math.PI / 180;
 
-  // minimal vertical height so the oblique cut reaches the top radius
+  // minimal vertical height from slope and radii
   const Hmin = dR / Math.tan(alpha);
 
-  // slant difference and mapping factor k
-  const slant_diff = Math.sqrt(Hmin*Hmin + dR*dR);
-  const k = slant_diff / dR;
+  // slant difference and mapping factor
+  const slant = Math.sqrt(Hmin * Hmin + dR * dR);
+  const k = slant / dR;
 
-  // wedge subdivision
+  // total wedge angle in development
   const theta_total = 2 * Math.PI / k;
   const dtheta = theta_total / N;
-  const thetas = Array.from({length:N}, (_, i) => i * dtheta);
+  const thetas = Array.from({ length: N }, (_, i) => i * dtheta);
+  const sel = [0, 1, 2, 3, 4, 5, 6]; // half pattern
 
-  // selection: show half pattern (0..6)
-  const sel = [0,1,2,3,4,5,6];
-
-  // developed outer radius (bottom fixed)
+  // base arcs
+  const S_top = k * Rt;
   const S_outer = k * Rb;
 
-  // azimuth samples for real cone (used to vary inner radius)
-  const phi = Array.from({length:N}, (_, i) => 2 * Math.PI * i / N);
+  // inner arc baseline from oblique cut
+  const phi = Array.from({ length: N }, (_, i) => 2 * Math.PI * i / N);
+  const r_inner_base = sel.map(i => Rb - dR * (1 - Math.cos(phi[i])) / 2);
+  let S_inner = r_inner_base.map(r => k * r);
 
-  // inner radius profile across phi: varies from Rb on low side to Rt on high side
-  const r_inner = sel.map(i => Rb - dR * (1 - Math.cos(phi[i])) / 2);
-  let S_inner = r_inner.map(r => k * r);
+  // add +30 mm between top arc and inner arc
+  S_inner = S_inner.map(s => s + 30);
 
-  // add extra 30 mm to the generator length of every segment by reducing inner developed radii
-  const EXTRA_HEIGHT = 30; // mm
-  S_inner = S_inner.map(s => Math.max(0, s - EXTRA_HEIGHT));
+  // build XY coordinates
+  const topPts   = sel.map(i => [S_top * Math.cos(thetas[i]),   S_top * Math.sin(thetas[i])]);
+  const innerPts = sel.map((i, idx) => [S_inner[idx] * Math.cos(thetas[i]), S_inner[idx] * Math.sin(thetas[i])]);
+  const outerPts = sel.map(i => [S_outer * Math.cos(thetas[i]), S_outer * Math.sin(thetas[i])]);
 
-  // build XY points in developed plane
-  const inner = sel.map((i, idx) => [S_inner[idx] * Math.cos(thetas[i]), S_inner[idx] * Math.sin(thetas[i])]);
-  const outer = sel.map(i => [S_outer * Math.cos(thetas[i]), S_outer * Math.sin(thetas[i])]);
-
-  // rotate pattern by rotDeg if needed
+  // apply rotation
   const ang = (rotDeg * Math.PI) / 180;
   const rot = ([x, y]) => [x * Math.cos(ang) - y * Math.sin(ang), x * Math.sin(ang) + y * Math.cos(ang)];
-  const innerR = inner.map(rot);
-  const outerR = outer.map(rot);
+  const topR   = topPts.map(rot);
+  const innerR = innerPts.map(rot);
+  const outerR = outerPts.map(rot);
 
+  // generators connect inner→outer
   const gens = innerR.map((p, i) => [p, outerR[i]]);
 
   return { inner: innerR, outer: outerR, gens, sel };
 }
+
   function renderKona(topD,botD,slopeDeg,rot){const pts=generateKonaPoints(topD,botD,slopeDeg,rot);const gens=pts.gens;let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;pts.inner.concat(pts.outer).concat(gens.flat()).forEach(([x,y])=>{if(x<minX)minX=x;if(y<minY)minY=y;if(x>maxX)maxX=x;if(y>maxY)maxY=y;});const m=10;minX-=m;minY-=m;maxX+=m;maxY+=m;const width=maxX-minX,height=maxY-minY;const pl=arr=>arr.map(([x,y])=>`${(x-minX).toFixed(2)},${(y-minY).toFixed(2)}`).join(' ');let svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${width}mm" height="${height}mm" viewBox="0 0 ${width} ${height}" shape-rendering="geometricPrecision">`;svg+=`<polyline points="${pl(pts.inner)}" fill="none" stroke="black" stroke-width="0.4"/>`;svg+=`<polyline points="${pl(pts.outer)}" fill="none" stroke="black" stroke-width="0.4"/>`;gens.forEach(seg=>{svg+=`<line x1="${(seg[0][0]-minX).toFixed(2)}" y1="${(seg[0][1]-minY).toFixed(2)}" x2="${(seg[1][0]-minX).toFixed(2)}" y2="${(seg[1][1]-minY).toFixed(2)}" stroke="black" stroke-width="0.3"/>`;});svg+=`</svg>`;$("konaPreview").innerHTML=svg;$("konaMeta").textContent=`Rotation: ${rot}° (auto/manuell)`;$("konaResult").style.display="block";hookExport("konaPreview","konaSvg","konaPdf","konaPrint","kona_halvmonster");}
 
   // --- Tabs ---
