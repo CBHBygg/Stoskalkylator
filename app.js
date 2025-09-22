@@ -156,110 +156,134 @@
   }
 
    // ====================== KONA (30mm top offset above cut) ======================
-  function initKona() {
-    const form = $("konaForm");
-    if (!form) return;
-    let currentRot = 0;
+ // ====================== KONA (top circle 30mm above high side; half-pattern) ======================
+function initKona() {
+  const form = $("konaForm");
+  if (!form) return;
 
-    $("konaRotSlider")?.addEventListener("input", (e) => {
-      currentRot = parseInt(e.target.value, 10) || 0;
-      $("konaRotInput").value = currentRot;
-      safeRerender();
-    });
-    $("konaRotInput")?.addEventListener("input", (e) => {
-      currentRot = parseInt(e.target.value, 10) || 0;
-      $("konaRotSlider").value = currentRot;
-      safeRerender();
-    });
-    form.addEventListener("submit", (e) => {
-      e.preventDefault();
-      safeRerender(true);
-    });
+  let currentRot = 0;
 
-    function safeRerender(autoRotate=false) {
-      try {
-        const topD = parseFloat($("konaTop").value);
-        const botD = parseFloat($("konaBottom").value);
-        let planeDeg = parseFloat($("konaSlope").value);
-        if ([topD, botD, planeDeg].some((v)=>isNaN(v)||v<=0)) return;
-        if (planeDeg <= 0) planeDeg = 0.0001;
-        if (planeDeg >= 89.9) planeDeg = 89.9;
+  $("konaRotSlider")?.addEventListener("input", (e) => {
+    currentRot = parseInt(e.target.value, 10) || 0;
+    $("konaRotInput").value = currentRot;
+    safeRerender();
+  });
+  $("konaRotInput")?.addEventListener("input", (e) => {
+    currentRot = parseInt(e.target.value, 10) || 0;
+    $("konaRotSlider").value = currentRot;
+    safeRerender();
+  });
 
-        if (autoRotate) {
-          currentRot = findBestRotation(topD, botD, planeDeg);
-          $("konaRotSlider").value = currentRot;
-          $("konaRotInput").value = currentRot;
-        }
-        renderKona(topD, botD, planeDeg, currentRot);
-      } catch(err){
-        console.error("Kona error:", err);
-        $("konaPreview").innerHTML = "<p style='color:red'>Kunde inte generera Kona-mönster.</p>";
-        $("konaResult").style.display = "block";
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    safeRerender(true); // also compute best rotation
+  });
+
+  function safeRerender(autoRotate = false) {
+    try {
+      const topD = parseFloat($("konaTop").value);
+      const botD = parseFloat($("konaBottom").value);
+      let planeDeg = parseFloat($("konaSlope").value);
+      if ([topD, botD, planeDeg].some(v => isNaN(v) || v <= 0)) return;
+
+      // Keep angle within open interval (0, 90)
+      if (planeDeg <= 0) planeDeg = 0.0001;
+      if (planeDeg >= 89.9) planeDeg = 89.9;
+
+      if (autoRotate) {
+        currentRot = findBestRotation(topD, botD, planeDeg);
+        $("konaRotSlider").value = currentRot;
+        $("konaRotInput").value = currentRot;
       }
+      renderKona(topD, botD, planeDeg, currentRot);
+    } catch (err) {
+      console.error("Kona rerender error:", err);
+      $("konaPreview").innerHTML = "<p style='color:red'>Kunde inte generera Kona-mönster.</p>";
+      $("konaResult").style.display = "block";
     }
   }
+}
 
-  function findBestRotation(topD, botD, planeDeg) {
-    const pageW = A4.wMm - 2 * A4.marginMm;
-    const pageH = A4.hMm - 2 * A4.marginMm;
+// Prefer any 1-page fit (portrait/landscape) at 1° steps; no scaling.
+function findBestRotation(topD, botD, planeDeg) {
+  const pageW = A4.wMm - 2 * A4.marginMm;
+  const pageH = A4.hMm - 2 * A4.marginMm;
 
-    let best = 0;
-    let bestMode = "multi";
-    let bestWaste = Infinity;
+  let best = 0;
+  let bestMode = "multi";
+  let bestWaste = Infinity;
 
-    for (let ang = 0; ang < 180; ang += 1) {
-      const box = computeKonaBBox(topD, botD, planeDeg, ang);
-      const fitsP = (box.w <= pageW && box.h <= pageH);
-      const wasteP = fitsP ? (pageW - box.w) * (pageH - box.h) : Infinity;
+  for (let ang = 0; ang < 180; ang += 1) {
+    const box = computeKonaBBox(topD, botD, planeDeg, ang);
+    const fitsP = (box.w <= pageW && box.h <= pageH);
+    const wasteP = fitsP ? (pageW - box.w) * (pageH - box.h) : Infinity;
 
-      const fitsL = (box.w <= pageH && box.h <= pageW);
-      const wasteL = fitsL ? (pageH - box.w) * (pageW - box.h) : Infinity;
+    const fitsL = (box.w <= pageH && box.h <= pageW);
+    const wasteL = fitsL ? (pageH - box.w) * (pageW - box.h) : Infinity;
 
-      const thisMode = (fitsP || fitsL) ? "single" : "multi";
-      const thisWaste = Math.min(wasteP, wasteL);
+    const thisMode = (fitsP || fitsL) ? "single" : "multi";
+    const thisWaste = Math.min(wasteP, wasteL);
 
-      if (thisMode === "single" && bestMode === "multi") {
-        best = ang; bestMode = "single"; bestWaste = thisWaste;
-      } else if (thisMode === bestMode && thisWaste < bestWaste) {
-        best = ang; bestWaste = thisWaste;
-      }
+    if (thisMode === "single" && bestMode === "multi") {
+      best = ang; bestMode = "single"; bestWaste = thisWaste;
+    } else if (thisMode === bestMode && thisWaste < bestWaste) {
+      best = ang; bestWaste = thisWaste;
     }
-    return best;
   }
+  return best;
+}
 
-  function computeKonaBBox(topD, botD, planeDeg, rot) {
-    const pts = generateKonaPoints(topD, botD, planeDeg, rot);
-    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
-    pts.inner.concat(pts.outer).concat(pts.gens.flat()).forEach(([x,y])=>{
-      if(x<minX)minX=x; if(y<minY)minY=y;
-      if(x>maxX)maxX=x; if(y>maxY)maxY=y;
-    });
-    return {w:maxX-minX,h:maxY-minY};
-  }
+function computeKonaBBox(topD, botD, planeDeg, rot) {
+  const pts = generateKonaPoints(topD, botD, planeDeg, rot);
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  pts.inner.concat(pts.outer).concat(pts.gens.flat()).forEach(([x, y]) => {
+    if (x < minX) minX = x; if (y < minY) minY = y;
+    if (x > maxX) maxX = x; if (y > maxY) maxY = y;
+  });
+  return { w: maxX - minX, h: maxY - minY };
+}
 
-// ---- New Kona geometry solver with 30mm offset above high side ----
+// ---- Robust solver for cone slope k
+// Constraint: top circle is 30mm above high side and equals user Rt.
+// With cone r = k z, oblique plane slope m = tan(theta):
+// y0 = Rb*(1 - m k)/k
+// r_high(φ=π) = k*y0/(1 + m k)
+// z_high = r_high/k
+// z_top = z_high + H  (H=30)
+// Rt = k*z_top = r_high + k*H = Rb*(1 - m k)/(1 + m k) + k*H
 function solveK_withOffset(Rt, Rb, m, H) {
   const eps = 1e-9;
+  const f = (k) => (Rb * (1 - m * k)) / (1 + m * k) + H * k - Rt;
 
-  function equation(k) {
-    const y0 = (Rb * (1 - m * k)) / Math.max(k, eps);
-    const rHigh = (k * y0) / (1 + m * k);   // slant radius at φ=π (high side)
-    const alpha = Math.atan(k);
-    const sinA = Math.sin(alpha);
-    return (rHigh / Math.max(sinA, eps)) + H * k - Rt;
-  }
+  // valid domain: k > 0 and m*k < 1 (avoid singularity)
+  const kUpper = Math.min(0.98 / Math.max(m, eps), 10.0);
+  let a = eps;
+  let b = Math.min(1.0, kUpper);
 
-  let a = eps, b = 1.0, fa = equation(a), fb = equation(b);
-  let tries = 0;
-  while (fa * fb > 0 && tries < 20) {
-    b *= 1.5;
-    fb = equation(b);
+  // Ensure we bracket a sign change; expand b if needed
+  let fa = f(a), fb = f(b), tries = 0;
+  while (fa * fb > 0 && tries < 40) {
+    b = Math.min(b * 1.7 + 0.02, kUpper);
+    fb = f(b);
     tries++;
   }
-  for (let i = 0; i < 100; i++) {
+
+  // If still no sign change, do a coarse scan to pick smallest |f| (fallback)
+  if (fa * fb > 0) {
+    let bestK = a, bestVal = Math.abs(fa);
+    for (let k = a; k <= kUpper; k += (kUpper - a) / 400) {
+      const val = Math.abs(f(k));
+      if (isFinite(val) && val < bestVal) { bestVal = val; bestK = k; }
+    }
+    return bestK;
+  }
+
+  // Bisection
+  for (let i = 0; i < 120; i++) {
     const mid = 0.5 * (a + b);
-    const fm = equation(mid);
-    if (Math.abs(fm) < 1e-8) return mid;
+    const fm = f(mid);
+    if (!isFinite(fm)) { b = mid; continue; }
+    if (Math.abs(b - a) < 1e-10 || Math.abs(fm) < 1e-9) return mid;
     if (fa * fm <= 0) { b = mid; fb = fm; } else { a = mid; fa = fm; }
   }
   return 0.5 * (a + b);
@@ -268,65 +292,96 @@ function solveK_withOffset(Rt, Rb, m, H) {
 function generateKonaPoints(topD, botD, planeDeg, rotDeg) {
   const Rt = topD / 2;
   const Rb = botD / 2;
-  const H = 30;                          // fixed offset above high side
-  const N = 6;
+  const H = 30;                   // fixed offset above high side
+  const N = 6;                    // half-pattern (6 wedges)
   const m = Math.tan((planeDeg * Math.PI) / 180);
 
   const k = solveK_withOffset(Rt, Rb, m, H);
   const alpha = Math.atan(k);
   const sinA = Math.sin(alpha);
+  const sinASafe = Math.max(sinA, 1e-9);
+
+  // Plane constant from low-side condition r(0) = Rb
+  // y0 = Rb*(1 - m k)/k
   const y0 = (Rb * (1 - m * k)) / Math.max(k, 1e-9);
 
+  // φ in [0, π] for half circumference
   const phi = [...Array(N)].map((_, i) => (Math.PI * i) / N);
+
+  // bottom radii around azimuth: r(φ) = k*y0 / (1 - m k cosφ)
   const r_bottom = phi.map((p) => {
     const den = 1 - m * k * Math.cos(p);
     const safe = Math.abs(den) < 1e-8 ? (den >= 0 ? 1e-8 : -1e-8) : den;
     return (k * y0) / safe;
   });
 
-  const s_top = Rt / Math.max(sinA, 1e-9);
-  const s_bottom = r_bottom.map((r) => r / Math.max(sinA, 1e-9));
+  // slant radii for development
+  const s_top = Rt / sinASafe;
+  const s_bottom = r_bottom.map((r) => r / sinASafe);
+
+  // development angles a = φ sinα
   const a = phi.map((p) => p * sinA);
 
+  // polar -> cartesian
   const inner = a.map((ang) => [s_top * Math.cos(ang), s_top * Math.sin(ang)]);
   const outer = a.map((ang, i) => [s_bottom[i] * Math.cos(ang), s_bottom[i] * Math.sin(ang)]);
+
+  // rotate for layout
   const ang = (rotDeg * Math.PI) / 180;
   const rot2d = ([x, y]) => [x * Math.cos(ang) - y * Math.sin(ang), x * Math.sin(ang) + y * Math.cos(ang)];
   const innerR = inner.map(rot2d);
   const outerR = outer.map(rot2d);
+
+  // generators
   const gens = innerR.map((p, i) => [p, outerR[i]]);
   return { inner: innerR, outer: outerR, gens };
 }
 
 function renderKona(topD, botD, planeDeg, rot) {
-  const container=$("konaPreview"),meta=$("konaMeta"),result=$("konaResult");
-  if(!container)return;
-  try{
-    const pts=generateKonaPoints(topD,botD,planeDeg,rot);
-    const gens=pts.gens;
-    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
-    pts.inner.concat(pts.outer).concat(gens.flat()).forEach(([x,y])=>{
-      if(x<minX)minX=x;if(y<minY)minY=y;if(x>maxX)maxX=x;if(y>maxY)maxY=y;
+  const container = $("konaPreview");
+  const meta = $("konaMeta");
+  const result = $("konaResult");
+  if (!container) return;
+
+  try {
+    const pts = generateKonaPoints(topD, botD, planeDeg, rot);
+    const gens = pts.gens;
+
+    // bbox
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    pts.inner.concat(pts.outer).concat(gens.flat()).forEach(([x, y]) => {
+      if (x < minX) minX = x; if (y < minY) minY = y;
+      if (x > maxX) maxX = x; if (y > maxY) maxY = y;
     });
-    const pad=10;minX-=pad;minY-=pad;maxX+=pad;maxY+=pad;
-    const width=maxX-minX,height=maxY-minY;
-    const pl=(arr)=>arr.map(([x,y])=>`${(x-minX).toFixed(2)},${(y-minY).toFixed(2)}`).join(" ");
-    let svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${width}mm" height="${height}mm" viewBox="0 0 ${width} ${height}" shape-rendering="geometricPrecision">`;
-    svg+=`<g fill="none" stroke="black" stroke-width="0.4">`;
-    svg+=`<polyline points="${pl(pts.inner)}"/>`;
-    svg+=`<polyline points="${pl(pts.outer)}"/>`;
-    gens.forEach(seg=>{svg+=`<line x1="${(seg[0][0]-minX).toFixed(2)}" y1="${(seg[0][1]-minY).toFixed(2)}" x2="${(seg[1][0]-minX).toFixed(2)}" y2="${(seg[1][1]-minY).toFixed(2)}"/>`;});
-    svg+=`</g></svg>`;
-    container.innerHTML=svg;
-    if(meta)meta.textContent=`Rotation: ${rot}°`;
-    if(result)result.style.display="block";
-    hookExport("konaPreview","konaSvg","konaPdf","konaPrint","kona_halvmonster");
-  }catch(err){
-    console.error("renderKona error:",err);
-    container.innerHTML="<p style='color:red'>Kunde inte generera Kona-mönster.</p>";
-    if(result)result.style.display="block";
+    const pad = 10;
+    minX -= pad; minY -= pad; maxX += pad; maxY += pad;
+    const width = maxX - minX, height = maxY - minY;
+
+    const pl = (arr) => arr.map(([x, y]) => `${(x - minX).toFixed(2)},${(y - minY).toFixed(2)}`).join(" ");
+
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}mm" height="${height}mm" viewBox="0 0 ${width} ${height}" shape-rendering="geometricPrecision">`;
+    svg += `<g fill="none" stroke="black" stroke-width="0.4">`;
+    svg += `<polyline points="${pl(pts.inner)}"/>`;
+    svg += `<polyline points="${pl(pts.outer)}"/>`;
+    gens.forEach(seg => {
+      svg += `<line x1="${(seg[0][0]-minX).toFixed(2)}" y1="${(seg[0][1]-minY).toFixed(2)}" x2="${(seg[1][0]-minX).toFixed(2)}" y2="${(seg[1][1]-minY).toFixed(2)}"/>`;
+    });
+    // connect ends for clarity
+    svg += `<line x1="${(pts.inner[0][0]-minX).toFixed(2)}" y1="${(pts.inner[0][1]-minY).toFixed(2)}" x2="${(pts.outer[0][0]-minX).toFixed(2)}" y2="${(pts.outer[0][1]-minY).toFixed(2)}"/>`;
+    svg += `<line x1="${(pts.inner[pts.inner.length-1][0]-minX).toFixed(2)}" y1="${(pts.inner[pts.inner.length-1][1]-minY).toFixed(2)}" x2="${(pts.outer[pts.outer.length-1][0]-minX).toFixed(2)}" y2="${(pts.outer[pts.outer.length-1][1]-minY).toFixed(2)}"/>`;
+    svg += `</g></svg>`;
+
+    container.innerHTML = svg;
+    if (meta) meta.textContent = `Rotation: ${rot}°`;
+    if (result) result.style.display = "block";
+    hookExport("konaPreview", "konaSvg", "konaPdf", "konaPrint", "kona_halvmonster");
+  } catch (err) {
+    console.error("renderKona error:", err);
+    container.innerHTML = "<p style='color:red'>Kunde inte generera Kona-mönster.</p>";
+    if (result) result.style.display = "block";
   }
 }
+
 
   // ====================== Tabs ======================
   function initTabs(){
