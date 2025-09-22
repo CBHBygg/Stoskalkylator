@@ -111,8 +111,8 @@
     if (printBtn) pdfBtn.onclick = () => exportMultiPagePDF(previewId, "pattern");
   }
 
-  // ---------------- Kona logic (half pattern with auto rotation) ----------------
-  function computeObliqueConeTriangulation(topD, botD, angleDeg, segments = 6, extraMm = 30, rotDeg = 0) {
+  // ---------------- Kona logic (triangulation oblique cone) ----------------
+  function computeObliqueConeTriangulation(topD, botD, angleDeg, segments = 12, extraMm = 30) {
     const R2 = topD / 2;
     const R1 = botD / 2;
     const T = Math.tan((angleDeg * Math.PI) / 180);
@@ -124,7 +124,7 @@
     const sF = Math.hypot(1, k);
     const zApex = R1 / k;
     const Rin = (zApex - H) * sF;
-    const thetas = Array.from({ length: segments + 1 }, (_, i) => (Math.PI * i) / segments); // half circle only
+    const thetas = Array.from({ length: segments + 1 }, (_, i) => (2 * Math.PI * i) / segments);
     function zAt(th) {
       const c = Math.cos(th);
       const denom = 1 - T * k * c;
@@ -149,49 +149,25 @@
     }
     const outer = betas.map((b, i) => [Rb[i] * Math.cos(b), Rb[i] * Math.sin(b)]);
     const inner = betas.map((b) => [Rin * Math.cos(b), Rin * Math.sin(b)]);
-    const ang = (rotDeg * Math.PI) / 180;
-    const rotate = ([x, y]) => [x * Math.cos(ang) - y * Math.sin(ang), x * Math.sin(ang) + y * Math.cos(ang)];
-    const outerR = outer.map(rotate);
-    const innerR = inner.map(rotate);
-    return { inner: innerR, outer: outerR };
-  }
-
-  function computeBBox(inner, outer) {
+    const all = outer.concat(inner);
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const [x, y] of inner.concat(outer)) {
+    for (const [x, y] of all) {
       if (x < minX) minX = x;
       if (y < minY) minY = y;
       if (x > maxX) maxX = x;
       if (y > maxY) maxY = y;
     }
-    return { w: maxX - minX, h: maxY - minY, minX, minY, maxX, maxY };
-  }
-
-  function findBestRotation(topD, botD, angleDeg) {
-    let best = 0, bestScore = -Infinity;
-    for (let rot = 0; rot < 180; rot += 5) {
-      const pts = computeObliqueConeTriangulation(topD, botD, angleDeg, 6, 30, rot);
-      const box = computeBBox(pts.inner, pts.outer);
-      const fitPortrait = Math.min((A4.wMm - 2 * A4.marginMm) / box.w, (A4.hMm - 2 * A4.marginMm) / box.h);
-      const fitLandscape = Math.min((A4.hMm - 2 * A4.marginMm) / box.w, (A4.wMm - 2 * A4.marginMm) / box.h);
-      const score = Math.max(fitPortrait, fitLandscape);
-      if (score > bestScore) { bestScore = score; best = rot; }
-    }
-    return best;
-  }
-
-  function renderKona(topD, botD, angleDeg) {
-    const rot = findBestRotation(topD, botD, angleDeg);
-    const dev = computeObliqueConeTriangulation(topD, botD, angleDeg, 6, 30, rot);
-    const { inner, outer } = dev;
-    const all = outer.concat(inner);
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const [x, y] of all) { if (x < minX) minX = x; if (y < minY) minY = y; if (x > maxX) maxX = x; if (y > maxY) maxY = y; }
     const margin = 10;
     const dx = -minX + margin;
     const dy = -minY + margin;
     const w = maxX - minX + 2 * margin;
     const h = maxY - minY + 2 * margin;
+    return { inner, outer, betas, Rin, dx, dy, w, h };
+  }
+
+  function renderKona(topD, botD, angleDeg) {
+    const dev = computeObliqueConeTriangulation(topD, botD, angleDeg);
+    const { inner, outer, dx, dy, w, h } = dev;
     const fmt = (x, y) => `${(x + dx).toFixed(2)},${(y + dy).toFixed(2)}`;
     const polyOuter = outer.map(([x, y]) => fmt(x, y)).join(" ");
     const polyInner = inner.map(([x, y]) => fmt(x, y)).join(" ");
@@ -205,10 +181,35 @@
     }
     svg += `</svg>`;
     $("konaPreview").innerHTML = svg;
-    $("konaMeta").textContent = `Kona (halvmönster, auto rotation ${rot}°): ToppØ=${topD} mm, BottenØ=${botD} mm, Vinkel=${angleDeg}°`;
+    $("konaMeta").textContent = `Kona: ToppØ=${topD}mm, BottenØ=${botD}mm, Vinkel=${angleDeg}°`;
     $("konaResult").style.display = "block";
     hookExport("konaPreview", "konaSvg", "konaPdf", "konaPrint");
   }
+
+  // ---------------- Tabs ----------------
+  document.querySelectorAll(".tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+      document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+      btn.classList.add("active");
+      const targetId = "tab-" + btn.dataset.tab;
+      document.getElementById(targetId).classList.add("active");
+    });
+  });
+
+  // ---------------- Kona form submit ----------------
+  const konaForm = $("konaForm");
+  if (konaForm) {
+    konaForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const topD = parseFloat($("konaTop").value);
+      const botD = parseFloat($("konaBottom").value);
+      const slopeDeg = parseFloat($("konaSlope").value);
+      if (isNaN(topD) || isNaN(botD) || isNaN(slopeDeg)) return;
+      renderKona(topD, botD, slopeDeg);
+    });
+  }
+})();
 
   // ---------------- Tabs ----------------
   document.querySelectorAll(".tab-btn").forEach((btn) => {
