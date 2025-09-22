@@ -45,15 +45,18 @@
     const rows = Math.ceil(heightMm / pageH);
 
     const pdf = new jsPDF({ unit: "pt", format: "a4" });
-    const pageWpt = pdf.internal.pageSize.getWidth();
-    const pageHpt = pdf.internal.pageSize.getHeight();
     const marginPt = mmToPt(A4.marginMm);
+    const pageWpt = mmToPt(A4.wMm - 2 * A4.marginMm);
+    const pageHpt = mmToPt(A4.hMm - 2 * A4.marginMm);
 
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         if (r !== 0 || c !== 0) pdf.addPage();
+
         const xMm = c * pageW;
         const yMm = r * pageH;
+
+        // Create a clipped clone of the SVG for this tile
         const clone = svg.cloneNode(true);
         const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
         g.setAttribute("transform", `translate(${-xMm},${-yMm})`);
@@ -74,14 +77,18 @@
         clone.innerHTML = "";
         clone.appendChild(defs);
         clone.appendChild(g);
-        clone.setAttribute("width", pageW + "mm");
-        clone.setAttribute("height", pageH + "mm");
-        clone.setAttribute("viewBox", `0 0 ${pageW} ${pageH}`);
+        clone.setAttribute("width", widthMm + "mm");
+        clone.setAttribute("height", heightMm + "mm");
+        clone.setAttribute("viewBox", `0 0 ${widthMm} ${heightMm}`);
+
+        // Render without scaling (1mm = 1mm)
         await svg2pdf(clone, pdf, {
-          x: marginPt, y: marginPt,
-          width: pageWpt - 2 * marginPt,
-          height: pageHpt - 2 * marginPt,
-          useCSS: true
+          x: marginPt,
+          y: marginPt,
+          width: mmToPt(pageW),
+          height: mmToPt(pageH),
+          useCSS: true,
+          preserveAspectRatio: "xMinYMin meet",
         });
       }
     }
@@ -126,7 +133,6 @@
     }
     const poly = pts.map(([x, y]) => `${x.toFixed(2)},${(Hs - y).toFixed(2)}`).join(' ');
     let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${L}mm" height="${Hs}mm" viewBox="0 0 ${L} ${Hs}" shape-rendering="geometricPrecision">`;
-    svg += `<rect x="0" y="0" width="${L}" height="${Hs}" fill="none" stroke="black" stroke-width="0.4"/>`;
     svg += `<polyline points="${poly}" fill="none" stroke="black" stroke-width="0.4"/>`;
     svg += `</svg>`;
     $("stosPreview").innerHTML = svg;
