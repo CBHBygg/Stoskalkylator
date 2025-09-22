@@ -155,8 +155,7 @@
     });
   }
 
- // ====================== KONA (triangulation; vertical +30mm; half-pattern) ======================
-// ====================== KONA (triangulation; axis +30 mm; half-pattern) ======================
+// ====================== KONA (triangulation; half-pattern; no extension) ======================
 function initKona() {
   const form = $("konaForm");
   if (!form) return;
@@ -176,7 +175,7 @@ function initKona() {
 
   form.addEventListener("submit", (e) => {
     e.preventDefault();
-    safeRerender(true); // also compute best rotation
+    safeRerender(true);
   });
 
   function safeRerender(autoRotate = false) {
@@ -203,7 +202,6 @@ function initKona() {
   }
 }
 
-// Prefer 1-page fit (portrait/landscape), 1° steps, never scale.
 function findBestRotation(topD, botD, slopeDeg) {
   const pageW = A4.wMm - 2 * A4.marginMm;
   const pageH = A4.hMm - 2 * A4.marginMm;
@@ -238,31 +236,21 @@ function computeKonaBBox(topD, botD, slopeDeg, rotDeg) {
   return { w: maxX - minX, h: maxY - minY };
 }
 
-// ---- Triangulation: half pattern, shared developed angles (no twist)
 function generateKonaPoints(topD, botD, slopeDeg, rotDeg) {
-  const Rt = topD / 2;                 // top radius (user)
-  const Rb = botD / 2;                 // bottom radius at low side
-  const N  = 6;                        // half-pattern (6 wedges → 7 points)
-  const m  = Math.tan((slopeDeg * Math.PI) / 180);  // plane slope
-  const Haxis = 30;                    // axis offset that matched the “good” result
-  // If you truly want zero offset, set Haxis = 0.
+  const Rt = topD / 2;
+  const Rb = botD / 2;
+  const N  = 6;
+  const m  = Math.tan((slopeDeg * Math.PI) / 180);
 
-  // Closed-form slope that produced the good result:
-  // k = (Rt - Rb) / (Rb*m + Haxis)
-  // (Empirically stable and matched your printed “looks right” pattern.)
-  let denom = (Rb * m + Haxis);
+  // slope relation without extension
+  let denom = (Rb * m);
   if (Math.abs(denom) < 1e-9) denom = (denom >= 0 ? 1e-9 : -1e-9);
   const k = (Rt - Rb) / denom;
 
-  // Cone angle
   const alpha = Math.atan(k);
   const sinA  = Math.abs(k) / Math.sqrt(1 + k * k);
   const sinASafe = Math.max(sinA, 1e-9);
 
-  // High-side height (consistent with this sign convention)
-  // and bottom radii around azimuth:
-  // z_high = (Rb*(1 + k*m))/k
-  // r(φ)   = (k*z_high) / (1 + k*m*cosφ)
   const zHigh = (Rb * (1 + k * m)) / Math.max(k, 1e-9);
 
   const phis = Array.from({ length: N + 1 }, (_, i) => (Math.PI * i) / N);
@@ -272,24 +260,18 @@ function generateKonaPoints(topD, botD, slopeDeg, rotDeg) {
     return (k * zHigh) / safe;
   });
 
-  // Slant radii for development
   const s_top    = Rt / sinASafe;
   const s_bottom = r_bottom.map((r) => Math.abs(r) / sinASafe);
-
-  // Shared developed angles (prevents twist)
   const a = phis.map((phi) => phi * sinA);
 
-  // Polar → Cartesian in development space
   const inner = a.map((ang) => [ s_top * Math.cos(ang),           s_top * Math.sin(ang) ]);
   const outer = a.map((ang, i) => [ s_bottom[i] * Math.cos(ang),  s_bottom[i] * Math.sin(ang) ]);
 
-  // Rotate for layout only
   const rot = (rotDeg * Math.PI) / 180;
   const rot2d = ([x, y]) => [ x * Math.cos(rot) - y * Math.sin(rot), x * Math.sin(rot) + y * Math.cos(rot) ];
   const innerR = inner.map(rot2d);
   const outerR = outer.map(rot2d);
 
-  // Generators (radials)
   const gens = innerR.map((p, i) => [ p, outerR[i] ]);
   return { inner: innerR, outer: outerR, gens };
 }
@@ -301,7 +283,6 @@ function renderKona(topD, botD, slopeDeg, rotDeg) {
     const pts = generateKonaPoints(topD, botD, slopeDeg, rotDeg);
     const gens = pts.gens;
 
-    // BBox
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     pts.inner.concat(pts.outer).concat(gens.flat()).forEach(([x, y]) => {
       if (x < minX) minX = x; if (y < minY) minY = y;
@@ -312,7 +293,6 @@ function renderKona(topD, botD, slopeDeg, rotDeg) {
 
     const pl = (arr) => arr.map(([x, y]) => `${(x - minX).toFixed(2)},${(y - minY).toFixed(2)}`).join(" ");
 
-    // SVG
     let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}mm" height="${height}mm" viewBox="0 0 ${width} ${height}" shape-rendering="geometricPrecision">`;
     svg += `<g fill="none" stroke="black" stroke-width="0.4">`;
     svg += `<polyline points="${pl(pts.inner)}"/>`;
@@ -320,9 +300,6 @@ function renderKona(topD, botD, slopeDeg, rotDeg) {
     gens.forEach(seg => {
       svg += `<line x1="${(seg[0][0]-minX).toFixed(2)}" y1="${(seg[0][1]-minY).toFixed(2)}" x2="${(seg[1][0]-minX).toFixed(2)}" y2="${(seg[1][1]-minY).toFixed(2)}"/>`;
     });
-    // optional: connect ends
-    svg += `<line x1="${(pts.inner[0][0]-minX).toFixed(2)}" y1="${(pts.inner[0][1]-minY).toFixed(2)}" x2="${(pts.outer[0][0]-minX).toFixed(2)}" y2="${(pts.outer[0][1]-minY).toFixed(2)}"/>`;
-    svg += `<line x1="${(pts.inner[pts.inner.length-1][0]-minX).toFixed(2)}" y1="${(pts.inner[pts.inner.length-1][1]-minY).toFixed(2)}" x2="${(pts.outer[pts.outer.length-1][0]-minX).toFixed(2)}" y2="${(pts.outer[pts.outer.length-1][1]-minY).toFixed(2)}"/>`;
     svg += `</g></svg>`;
 
     container.innerHTML = svg;
