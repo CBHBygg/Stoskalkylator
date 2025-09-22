@@ -8,6 +8,17 @@
   const mmToPt = (mm) => (mm * 72.0) / 25.4;
   const A4 = { wMm: 210, hMm: 297, marginMm: 5 };
 
+  function getNumberFrom(ids, fallback) {
+    for (const id of ids) {
+      const el = $(id);
+      if (el && el.value != null && el.value !== "") {
+        const v = Number(String(el.value).replace(",", "."));
+        if (!Number.isNaN(v)) return v;
+      }
+    }
+    return fallback;
+  }
+
   // ---------------- Library detection ----------------
   function getLibs() {
     const jsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
@@ -22,9 +33,9 @@
     return { jsPDF, svg2pdf };
   }
 
-  // ---------------- Export helpers ----------------
-  function downloadText(filename, text) {
-    const blob = new Blob([text], { type: "image/svg+xml;charset=utf-8" });
+  // ---------------- Export helpers (1:1 scale) ----------------
+  function downloadText(filename, text, mime="image/svg+xml;charset=utf-8") {
+    const blob = new Blob([text], { type: mime });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -34,10 +45,8 @@
   }
 
   function exportSVG(previewId, filename) {
-    const wrap = document.querySelector(`#${previewId}`);
-    if (!wrap) return;
-    const svg = wrap.querySelector("svg");
-    if (!svg) return;
+    const svg = document.querySelector(`#${previewId} svg`);
+    if (!svg) return alert("Ingen SVG att exportera.");
     const serializer = new XMLSerializer();
     const text = serializer.serializeToString(svg);
     downloadText(filename || "pattern.svg", text);
@@ -45,12 +54,9 @@
 
   async function exportMultiPagePDF(previewId, filenameBase) {
     const { jsPDF, svg2pdf } = getLibs();
-    if (!jsPDF || !svg2pdf) {
-      alert("PDF-export misslyckades: jsPDF/svg2pdf inte laddad.");
-      return;
-    }
+    if (!jsPDF || !svg2pdf) return alert("PDF-export misslyckades: jsPDF/svg2pdf inte laddad.");
     const svg = document.querySelector(`#${previewId} svg`);
-    if (!svg) { alert("Ingen SVG att exportera."); return; }
+    if (!svg) return alert("Ingen SVG att exportera.");
     const widthMm = parseFloat(svg.getAttribute("width"));
     const heightMm = parseFloat(svg.getAttribute("height"));
     const pageW = A4.wMm - 2 * A4.marginMm;
@@ -80,8 +86,7 @@
         rect.setAttribute("height", pageH);
         clipPath.appendChild(rect);
         defs.appendChild(clipPath);
-        const originalBody = svg.querySelector("g") || svg;
-        const body = originalBody.cloneNode(true);
+        const body = (svg.querySelector("g") || svg).cloneNode(true);
         body.setAttribute("clip-path", `url(#${clipId})`);
         g.appendChild(body);
         clone.innerHTML = "";
@@ -102,17 +107,38 @@
     pdf.save((filenameBase || "pattern") + ".pdf");
   }
 
+  function printPreview(previewId) {
+    const svg = document.querySelector(`#${previewId} svg`);
+    if (!svg) return alert("Ingen SVG att skriva ut.");
+    const w = svg.getAttribute("width");
+    const h = svg.getAttribute("height");
+    const html = `<!doctype html><html><head><meta charset="utf-8">
+      <style>
+        @page { size: A4; margin: 10mm; }
+        body{margin:0;padding:0}
+      </style>
+    </head>
+    <body>
+      ${svg.outerHTML}
+      <script>window.onload = () => { window.print(); }</script>
+    </body></html>`;
+    const win = window.open("", "_blank");
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+  }
+
   function hookExport(previewId, svgBtnId, pdfBtnId, printBtnId) {
     const svgBtn = $(svgBtnId);
     const pdfBtn = $(pdfBtnId);
     const printBtn = $(printBtnId);
     if (svgBtn) svgBtn.onclick = () => exportSVG(previewId, "pattern.svg");
     if (pdfBtn) pdfBtn.onclick = () => exportMultiPagePDF(previewId, "pattern");
-    if (printBtn) pdfBtn.onclick = () => exportMultiPagePDF(previewId, "pattern");
+    if (printBtn) printBtn.onclick = () => printPreview(previewId);
   }
 
-  // ---------------- Kona logic (half pattern with auto rotation) ----------------
-  function computeObliqueConeTriangulation(topD, botD, angleDeg, segments = 6, extraMm = 30, rotDeg = 0) {
+  // ---------------- KONA: half pattern, 1° auto-rotation, slider, 1:1, tiling ----------------
+  function computeKonaTriangulation(topD, botD, angleDeg, segments = 6, extraMm = 30, rotDeg = 0) {
     const R2 = topD / 2;
     const R1 = botD / 2;
     const T = Math.tan((angleDeg * Math.PI) / 180);
@@ -124,7 +150,7 @@
     const sF = Math.hypot(1, k);
     const zApex = R1 / k;
     const Rin = (zApex - H) * sF;
-    const thetas = Array.from({ length: segments + 1 }, (_, i) => (Math.PI * i) / segments); // half circle only
+    const thetas = Array.from({ length: segments + 1 }, (_, i) => (Math.PI * i) / segments); // half only
     function zAt(th) {
       const c = Math.cos(th);
       const denom = 1 - T * k * c;
@@ -156,22 +182,22 @@
     return { inner: innerR, outer: outerR };
   }
 
-  function computeBBox(inner, outer) {
+  function computeBBox(points) {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const [x, y] of inner.concat(outer)) {
+    for (const [x, y] of points) {
       if (x < minX) minX = x;
       if (y < minY) minY = y;
       if (x > maxX) maxX = x;
       if (y > maxY) maxY = y;
     }
-    return { w: maxX - minX, h: maxY - minY, minX, minY, maxX, maxY };
+    return { minX, minY, maxX, maxY, w: maxX - minX, h: maxY - minY };
   }
 
-  function findBestRotation(topD, botD, angleDeg) {
+  function findBestKonaRotation(topD, botD, angleDeg) {
     let best = 0, bestScore = -Infinity;
-    for (let rot = 0; rot < 180; rot += 5) {
-      const pts = computeObliqueConeTriangulation(topD, botD, angleDeg, 6, 30, rot);
-      const box = computeBBox(pts.inner, pts.outer);
+    for (let rot = 0; rot < 180; rot++) { // 1° steps
+      const dev = computeKonaTriangulation(topD, botD, angleDeg, 6, 30, rot);
+      const box = computeBBox(dev.inner.concat(dev.outer));
       const fitPortrait = Math.min((A4.wMm - 2 * A4.marginMm) / box.w, (A4.hMm - 2 * A4.marginMm) / box.h);
       const fitLandscape = Math.min((A4.hMm - 2 * A4.marginMm) / box.w, (A4.wMm - 2 * A4.marginMm) / box.h);
       const score = Math.max(fitPortrait, fitLandscape);
@@ -180,18 +206,20 @@
     return best;
   }
 
-  function renderKona(topD, botD, angleDeg) {
-    const rot = findBestRotation(topD, botD, angleDeg);
-    const dev = computeObliqueConeTriangulation(topD, botD, angleDeg, 6, 30, rot);
+  let currentKonaRot = 0;
+
+  function renderKona(topD, botD, angleDeg, manualRot = null) {
+    const rot = manualRot !== null ? manualRot : findBestKonaRotation(topD, botD, angleDeg);
+    currentKonaRot = rot;
+    const dev = computeKonaTriangulation(topD, botD, angleDeg, 6, 30, rot);
     const { inner, outer } = dev;
     const all = outer.concat(inner);
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const [x, y] of all) { if (x < minX) minX = x; if (y < minY) minY = y; if (x > maxX) maxX = x; if (y > maxY) maxY = y; }
+    const bb = computeBBox(all);
     const margin = 10;
-    const dx = -minX + margin;
-    const dy = -minY + margin;
-    const w = maxX - minX + 2 * margin;
-    const h = maxY - minY + 2 * margin;
+    const dx = -bb.minX + margin;
+    const dy = -bb.minY + margin;
+    const w = bb.w + 2 * margin;
+    const h = bb.h + 2 * margin;
     const fmt = (x, y) => `${(x + dx).toFixed(2)},${(y + dy).toFixed(2)}`;
     const polyOuter = outer.map(([x, y]) => fmt(x, y)).join(" ");
     const polyInner = inner.map(([x, y]) => fmt(x, y)).join(" ");
@@ -205,9 +233,48 @@
     }
     svg += `</svg>`;
     $("konaPreview").innerHTML = svg;
-    $("konaMeta").textContent = `Kona (halvmönster, auto rotation ${rot}°): ToppØ=${topD} mm, BottenØ=${botD} mm, Vinkel=${angleDeg}°`;
-    $("konaResult").style.display = "block";
+    const meta = $("konaMeta");
+    if (meta) meta.textContent = `Kona (halvmönster, rotation ${rot}°): ToppØ=${topD} mm, BottenØ=${botD} mm, Vinkel=${angleDeg}°`;
+    const boxEl = $("konaResult");
+    if (boxEl) boxEl.style.display = "block";
+    const rs = $("konaRotSlider"), ri = $("konaRotInput");
+    if (rs) rs.value = rot;
+    if (ri) ri.value = rot;
     hookExport("konaPreview", "konaSvg", "konaPdf", "konaPrint");
+  }
+
+  // ---------------- STOS: half pattern of angled cut cylinder (sinusoid), 1:1, tiling, print ----------------
+  function renderStos(diameter, angleDeg) {
+    const R = diameter / 2;
+    const T = Math.tan((angleDeg * Math.PI) / 180);
+    const height = 2 * R * T;                 // skärningshöjd
+    const halfWidth = Math.PI * diameter / 2; // omkrets/2
+    const samples = 300;
+    const pts = [];
+    for (let i = 0; i <= samples; i++) {
+      const theta = Math.PI * (i / samples); // 0..π for half pattern
+      const x = (theta / Math.PI) * halfWidth;
+      const y = R * T * (1 - Math.cos(theta)); // 0..2RT
+      pts.push([x, y]);
+    }
+    const margin = 10;
+    const w = halfWidth + 2 * margin;
+    const h = height + 2 * margin;
+    const fmt = (x, y) => `${(x + margin).toFixed(2)},${(y + margin).toFixed(2)}`;
+    const poly = pts.map(([x, y]) => fmt(x, y)).join(" ");
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w.toFixed(2)}mm" height="${h.toFixed(2)}mm" viewBox="0 0 ${w.toFixed(2)} ${h.toFixed(2)}" shape-rendering="geometricPrecision">`;
+    // bounding box
+    svg += `<rect x="${margin}" y="${margin}" width="${halfWidth.toFixed(2)}" height="${height.toFixed(2)}" fill="none" stroke="#999" stroke-dasharray="4 4"/>`;
+    // curve
+    svg += `<polyline points="${poly}" fill="none" stroke="black" stroke-width="0.35"/>`;
+    // size markers (optional light)
+    svg += `</svg>`;
+    $("stosPreview").innerHTML = svg;
+    const meta = $("stosMeta");
+    if (meta) meta.textContent = `Stos (halvmönster): Ø=${diameter} mm, Vinkel=${angleDeg}°, Skärningshöjd=${height.toFixed(2)} mm, Halvbredd=${halfWidth.toFixed(2)} mm`;
+    const box = $("stosResult");
+    if (box) box.style.display = "block";
+    hookExport("stosPreview", "stosSvg", "stosPdf", "stosPrint");
   }
 
   // ---------------- Tabs ----------------
@@ -217,20 +284,53 @@
       document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
       btn.classList.add("active");
       const targetId = "tab-" + btn.dataset.tab;
-      document.getElementById(targetId).classList.add("active");
+      const tabEl = document.getElementById(targetId);
+      if (tabEl) tabEl.classList.add("active");
     });
   });
 
-  // ---------------- Kona form submit ----------------
+  // ---------------- Wire forms & controls ----------------
+  // Kona form
   const konaForm = $("konaForm");
   if (konaForm) {
     konaForm.addEventListener("submit", (e) => {
       e.preventDefault();
-      const topD = parseFloat($("konaTop").value);
-      const botD = parseFloat($("konaBottom").value);
-      const slopeDeg = parseFloat($("konaSlope").value);
-      if (isNaN(topD) || isNaN(botD) || isNaN(slopeDeg)) return;
+      const topD = getNumberFrom(["konaTop","toppdiameter","Toppdiameter"], 50);
+      const botD = getNumberFrom(["konaBottom","bottendiameter","Bottendiameter"], 70);
+      const slopeDeg = getNumberFrom(["konaSlope","taklutning","Taklutning"], 45);
       renderKona(topD, botD, slopeDeg);
     });
   }
+  const rs = $("konaRotSlider"), ri = $("konaRotInput");
+  function rerenderKonaManual() {
+    const topD = getNumberFrom(["konaTop","toppdiameter","Toppdiameter"], 50);
+    const botD = getNumberFrom(["konaBottom","bottendiameter","Bottendiameter"], 70);
+    const slopeDeg = getNumberFrom(["konaSlope","taklutning","Taklutning"], 45);
+    renderKona(topD, botD, slopeDeg, currentKonaRot);
+  }
+  if (rs && ri) {
+    rs.addEventListener("input", (e) => { currentKonaRot = parseInt(e.target.value); ri.value = currentKonaRot; rerenderKonaManual(); });
+    ri.addEventListener("input", (e) => { currentKonaRot = parseInt(e.target.value); rs.value = currentKonaRot; rerenderKonaManual(); });
+  }
+
+  // Stos form
+  const stosForm = $("stosForm");
+  if (stosForm) {
+    stosForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const d = getNumberFrom(["stosDiameter","stos_diameter","stosD","diameter","Diameter"], 100);
+      const a = getNumberFrom(["stosAngle","stos_angle","stosTaklutning","stosSlope","TaklutningStos"], 45);
+      renderStos(d, a);
+    });
+  }
+
+  // Service worker register
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./service-worker.js");
+    });
+  }
+
+  // Expose for console testing
+  window.CBH = { renderKona, renderStos };
 })();
