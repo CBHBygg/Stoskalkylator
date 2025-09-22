@@ -288,36 +288,27 @@ function solveK_vertical(Rt, Rb, m, H) {
   return 0.5 * (a + b);
 }
 
-/**
- * Triangulation development (half pattern):
- * - Choose φ ∈ [0, π] uniformly (N segments → N+1 points).
- * - Compute bottom radii r(φ) from the oblique cut.
- * - Convert to slant lengths s = r / sinα for development.
- * - Developed central angles are a = φ · sinα (shared for both arcs) → no twist.
- * - Top circle lies at z_high + H (vertical), with radius Rt.
- */
+// ---- Kona geometry (triangulation, half pattern, no extra vertical offset) ----
 function generateKonaPoints(topD, botD, slopeDeg, rotDeg) {
   const Rt = topD / 2;          // user top radius
   const Rb = botD / 2;          // user bottom radius at low side (φ=0)
-  const H  = 30;                // fixed vertical extension above high side (mm)
-  const N  = 6;                 // half-pattern (6 wedges → 7 points)
-  const m  = Math.tan((slopeDeg * Math.PI) / 180); // plane slope
+  const N  = 6;                 // half pattern = 6 wedges (7 points)
+  const m  = Math.tan((slopeDeg * Math.PI) / 180);
 
-  // Solve cone slope k from vertical offset constraint
-  const k = solveK_vertical(Rt, Rb, m, H);
+  // Cone slope k by direct geometry (no extra vertical constraint)
+  const k = (Rt - Rb) / (Rb * m);   // simplified slope relation
 
-  // Cone angle
   const alpha = Math.atan(k);
   const sinA  = Math.abs(k) / Math.sqrt(1 + k * k);
   const sinASafe = Math.max(sinA, 1e-9);
 
-  // Low side condition gives plane constant y0 (with our plane sign convention)
+  // Low side condition gives plane constant y0
   const y0 = (Rb * (1 - m * k)) / Math.max(k, 1e-9);
 
   // Half circumference sampling: φ ∈ [0, π]
   const phis = Array.from({ length: N + 1 }, (_, i) => (Math.PI * i) / N);
 
-  // Bottom radii from the oblique plane intersection
+  // Bottom radii from oblique plane intersection
   const r_bottom = phis.map((phi) => {
     const den = 1 - m * k * Math.cos(phi);
     const safe = Math.abs(den) < 1e-8 ? (den >= 0 ? 1e-8 : -1e-8) : den;
@@ -328,20 +319,20 @@ function generateKonaPoints(topD, botD, slopeDeg, rotDeg) {
   const s_top    = Rt / sinASafe;
   const s_bottom = r_bottom.map((r) => Math.abs(r) / sinASafe);
 
-  // Shared developed angles (this is what removes twist)
+  // Shared developed angles (no twist)
   const a = phis.map((phi) => phi * sinA);
 
-  // Polar → Cartesian (development space)
-  const inner = a.map((ang) => [ s_top * Math.cos(ang),              s_top * Math.sin(ang) ]);
-  const outer = a.map((ang, i) => [ s_bottom[i] * Math.cos(ang),     s_bottom[i] * Math.sin(ang) ]);
+  // Polar → Cartesian (development)
+  const inner = a.map((ang) => [ s_top * Math.cos(ang),           s_top * Math.sin(ang) ]);
+  const outer = a.map((ang, i) => [ s_bottom[i] * Math.cos(ang),  s_bottom[i] * Math.sin(ang) ]);
 
-  // Rotation for layout only
+  // Rotate for layout
   const rot = (rotDeg * Math.PI) / 180;
   const rot2d = ([x, y]) => [ x * Math.cos(rot) - y * Math.sin(rot), x * Math.sin(rot) + y * Math.cos(rot) ];
   const innerR = inner.map(rot2d);
   const outerR = outer.map(rot2d);
 
-  // Generators (triangles)
+  // Generators
   const gens = innerR.map((p, i) => [ p, outerR[i] ]);
   return { inner: innerR, outer: outerR, gens };
 }
@@ -353,7 +344,7 @@ function renderKona(topD, botD, slopeDeg, rotDeg) {
     const pts = generateKonaPoints(topD, botD, slopeDeg, rotDeg);
     const gens = pts.gens;
 
-    // BBox
+    // Bounding box
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     pts.inner.concat(pts.outer).concat(gens.flat()).forEach(([x, y]) => {
       if (x < minX) minX = x; if (y < minY) minY = y;
@@ -372,9 +363,6 @@ function renderKona(topD, botD, slopeDeg, rotDeg) {
     gens.forEach(seg => {
       svg += `<line x1="${(seg[0][0]-minX).toFixed(2)}" y1="${(seg[0][1]-minY).toFixed(2)}" x2="${(seg[1][0]-minX).toFixed(2)}" y2="${(seg[1][1]-minY).toFixed(2)}"/>`;
     });
-    // optional: connect ends
-    svg += `<line x1="${(pts.inner[0][0]-minX).toFixed(2)}" y1="${(pts.inner[0][1]-minY).toFixed(2)}" x2="${(pts.outer[0][0]-minX).toFixed(2)}" y2="${(pts.outer[0][1]-minY).toFixed(2)}"/>`;
-    svg += `<line x1="${(pts.inner[pts.inner.length-1][0]-minX).toFixed(2)}" y1="${(pts.inner[pts.inner.length-1][1]-minY).toFixed(2)}" x2="${(pts.outer[pts.outer.length-1][0]-minX).toFixed(2)}" y2="${(pts.outer[pts.outer.length-1][1]-minY).toFixed(2)}"/>`;
     svg += `</g></svg>`;
 
     container.innerHTML = svg;
