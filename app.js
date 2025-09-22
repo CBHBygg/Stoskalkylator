@@ -43,38 +43,63 @@
     downloadText(filename || "pattern.svg", text);
   }
 
-  function exportPDF(previewId, filename) {
-    const wrap = document.querySelector(`#${previewId}`);
-    if (!wrap) return;
-    const svgEl = wrap.querySelector("svg");
-    if (!svgEl) return;
+  async function exportMultiPagePDF(previewId, filenameBase) {
     const { jsPDF, svg2pdf } = getLibs();
     if (!jsPDF || !svg2pdf) {
       alert("PDF-export misslyckades: jsPDF/svg2pdf inte laddad.");
       return;
     }
-    const wMm = parseFloat(svgEl.getAttribute("width"));
-    const hMm = parseFloat(svgEl.getAttribute("height"));
-    let pdfW = A4.wMm, pdfH = A4.hMm;
-    if ((wMm > hMm && pdfW < pdfH) || (wMm > pdfW - 2 * A4.marginMm)) {
-      pdfW = A4.hMm; pdfH = A4.wMm;
+    const svg = document.querySelector(`#${previewId} svg`);
+    if (!svg) { alert("Ingen SVG att exportera."); return; }
+    const widthMm = parseFloat(svg.getAttribute("width"));
+    const heightMm = parseFloat(svg.getAttribute("height"));
+    const pageW = A4.wMm - 2 * A4.marginMm;
+    const pageH = A4.hMm - 2 * A4.marginMm;
+    const cols = Math.ceil(widthMm / pageW);
+    const rows = Math.ceil(heightMm / pageH);
+    const pdf = new jsPDF({ unit: "pt", format: "a4" });
+    const pageWpt = pdf.internal.pageSize.getWidth();
+    const pageHpt = pdf.internal.pageSize.getHeight();
+    const marginPt = mmToPt(A4.marginMm);
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (r !== 0 || c !== 0) pdf.addPage();
+        const xMm = c * pageW;
+        const yMm = r * pageH;
+        const clone = svg.cloneNode(true);
+        const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        g.setAttribute("transform", `translate(${-xMm},${-yMm})`);
+        const clipId = `clip_${r}_${c}`;
+        const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+        const clipPath = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
+        clipPath.setAttribute("id", clipId);
+        const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        rect.setAttribute("x", xMm);
+        rect.setAttribute("y", yMm);
+        rect.setAttribute("width", pageW);
+        rect.setAttribute("height", pageH);
+        clipPath.appendChild(rect);
+        defs.appendChild(clipPath);
+        const originalBody = svg.querySelector("g") || svg;
+        const body = originalBody.cloneNode(true);
+        body.setAttribute("clip-path", `url(#${clipId})`);
+        g.appendChild(body);
+        clone.innerHTML = "";
+        clone.appendChild(defs);
+        clone.appendChild(g);
+        clone.setAttribute("width", pageW + "mm");
+        clone.setAttribute("height", pageH + "mm");
+        clone.setAttribute("viewBox", `0 0 ${pageW} ${pageH}`);
+        await svg2pdf(clone, pdf, {
+          x: marginPt,
+          y: marginPt,
+          width: pageWpt - 2 * marginPt,
+          height: pageHpt - 2 * marginPt,
+          useCSS: true,
+        });
+      }
     }
-    const doc = new jsPDF({ unit: "pt", format: [mmToPt(pdfW), mmToPt(pdfH)] });
-    const xPt = mmToPt(A4.marginMm);
-    const yPt = mmToPt(A4.marginMm);
-    const maxWPt = mmToPt(pdfW - 2 * A4.marginMm);
-    const maxHPt = mmToPt(pdfH - 2 * A4.marginMm);
-    const targetScale = Math.min(maxWPt / mmToPt(wMm), maxHPt / mmToPt(hMm));
-    const svgClone = svgEl.cloneNode(true);
-    svg2pdf(svgClone, doc, {
-      x: xPt,
-      y: yPt,
-      assumePt: true,
-      scale: targetScale * (mmToPt(1)),
-      useCSS: true,
-      precision: 4
-    });
-    doc.save(filename || "pattern.pdf");
+    pdf.save((filenameBase || "pattern") + ".pdf");
   }
 
   function hookExport(previewId, svgBtnId, pdfBtnId, printBtnId) {
@@ -82,12 +107,12 @@
     const pdfBtn = $(pdfBtnId);
     const printBtn = $(printBtnId);
     if (svgBtn) svgBtn.onclick = () => exportSVG(previewId, "pattern.svg");
-    if (pdfBtn) pdfBtn.onclick = () => exportPDF(previewId, "pattern.pdf");
-    if (printBtn) printBtn.onclick = () => exportPDF(previewId, "pattern.pdf");
+    if (pdfBtn) pdfBtn.onclick = () => exportMultiPagePDF(previewId, "pattern");
+    if (printBtn) pdfBtn.onclick = () => exportMultiPagePDF(previewId, "pattern");
   }
 
-  // ---------------- Kona logic (triangulation oblique cone) ----------------
-  function computeObliqueConeTriangulation(topD, botD, angleDeg, segments = 12, extraMm = 30) {
+  // ---------------- Kona logic (half pattern with auto rotation) ----------------
+  function computeObliqueConeTriangulation(topD, botD, angleDeg, segments = 6, extraMm = 30, rotDeg = 0) {
     const R2 = topD / 2;
     const R1 = botD / 2;
     const T = Math.tan((angleDeg * Math.PI) / 180);
@@ -99,7 +124,7 @@
     const sF = Math.hypot(1, k);
     const zApex = R1 / k;
     const Rin = (zApex - H) * sF;
-    const thetas = Array.from({ length: segments + 1 }, (_, i) => (2 * Math.PI * i) / segments);
+    const thetas = Array.from({ length: segments + 1 }, (_, i) => (Math.PI * i) / segments); // half circle only
     function zAt(th) {
       const c = Math.cos(th);
       const denom = 1 - T * k * c;
@@ -124,25 +149,49 @@
     }
     const outer = betas.map((b, i) => [Rb[i] * Math.cos(b), Rb[i] * Math.sin(b)]);
     const inner = betas.map((b) => [Rin * Math.cos(b), Rin * Math.sin(b)]);
-    const all = outer.concat(inner);
+    const ang = (rotDeg * Math.PI) / 180;
+    const rotate = ([x, y]) => [x * Math.cos(ang) - y * Math.sin(ang), x * Math.sin(ang) + y * Math.cos(ang)];
+    const outerR = outer.map(rotate);
+    const innerR = inner.map(rotate);
+    return { inner: innerR, outer: outerR };
+  }
+
+  function computeBBox(inner, outer) {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const [x, y] of all) {
+    for (const [x, y] of inner.concat(outer)) {
       if (x < minX) minX = x;
       if (y < minY) minY = y;
       if (x > maxX) maxX = x;
       if (y > maxY) maxY = y;
     }
+    return { w: maxX - minX, h: maxY - minY, minX, minY, maxX, maxY };
+  }
+
+  function findBestRotation(topD, botD, angleDeg) {
+    let best = 0, bestScore = -Infinity;
+    for (let rot = 0; rot < 180; rot += 5) {
+      const pts = computeObliqueConeTriangulation(topD, botD, angleDeg, 6, 30, rot);
+      const box = computeBBox(pts.inner, pts.outer);
+      const fitPortrait = Math.min((A4.wMm - 2 * A4.marginMm) / box.w, (A4.hMm - 2 * A4.marginMm) / box.h);
+      const fitLandscape = Math.min((A4.hMm - 2 * A4.marginMm) / box.w, (A4.wMm - 2 * A4.marginMm) / box.h);
+      const score = Math.max(fitPortrait, fitLandscape);
+      if (score > bestScore) { bestScore = score; best = rot; }
+    }
+    return best;
+  }
+
+  function renderKona(topD, botD, angleDeg) {
+    const rot = findBestRotation(topD, botD, angleDeg);
+    const dev = computeObliqueConeTriangulation(topD, botD, angleDeg, 6, 30, rot);
+    const { inner, outer } = dev;
+    const all = outer.concat(inner);
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const [x, y] of all) { if (x < minX) minX = x; if (y < minY) minY = y; if (x > maxX) maxX = x; if (y > maxY) maxY = y; }
     const margin = 10;
     const dx = -minX + margin;
     const dy = -minY + margin;
     const w = maxX - minX + 2 * margin;
     const h = maxY - minY + 2 * margin;
-    return { inner, outer, betas, Rin, dx, dy, w, h };
-  }
-
-  function renderKona(topD, botD, angleDeg) {
-    const dev = computeObliqueConeTriangulation(topD, botD, angleDeg);
-    const { inner, outer, dx, dy, w, h } = dev;
     const fmt = (x, y) => `${(x + dx).toFixed(2)},${(y + dy).toFixed(2)}`;
     const polyOuter = outer.map(([x, y]) => fmt(x, y)).join(" ");
     const polyInner = inner.map(([x, y]) => fmt(x, y)).join(" ");
@@ -156,7 +205,7 @@
     }
     svg += `</svg>`;
     $("konaPreview").innerHTML = svg;
-    $("konaMeta").textContent = `Kona: ToppØ=${topD}mm, BottenØ=${botD}mm, Vinkel=${angleDeg}°`;
+    $("konaMeta").textContent = `Kona (halvmönster, auto rotation ${rot}°): ToppØ=${topD} mm, BottenØ=${botD} mm, Vinkel=${angleDeg}°`;
     $("konaResult").style.display = "block";
     hookExport("konaPreview", "konaSvg", "konaPdf", "konaPrint");
   }
