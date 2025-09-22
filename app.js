@@ -246,11 +246,9 @@ function solveK_withOffset(Rt, Rb, m, H) {
     const rHigh = (k * y0) / (1 + m * k);   // slant radius at φ=π (high side)
     const alpha = Math.atan(k);
     const sinA = Math.sin(alpha);
-    // top circle slant radius must equal Rt/sinα, located H above high side
     return (rHigh / Math.max(sinA, eps)) + H * k - Rt;
   }
 
-  // Simple bisection search for k > 0
   let a = eps, b = 1.0, fa = equation(a), fb = equation(b);
   let tries = 0;
   while (fa * fb > 0 && tries < 20) {
@@ -270,15 +268,13 @@ function solveK_withOffset(Rt, Rb, m, H) {
 function generateKonaPoints(topD, botD, planeDeg, rotDeg) {
   const Rt = topD / 2;
   const Rb = botD / 2;
-  const H = 30;                          // fixed offset
-  const N = 6;                           // half pattern
+  const H = 30;                          // fixed offset above high side
+  const N = 6;
   const m = Math.tan((planeDeg * Math.PI) / 180);
 
-  // Solve slope k with the offset condition
   const k = solveK_withOffset(Rt, Rb, m, H);
   const alpha = Math.atan(k);
   const sinA = Math.sin(alpha);
-
   const y0 = (Rb * (1 - m * k)) / Math.max(k, 1e-9);
 
   const phi = [...Array(N)].map((_, i) => (Math.PI * i) / N);
@@ -294,7 +290,6 @@ function generateKonaPoints(topD, botD, planeDeg, rotDeg) {
 
   const inner = a.map((ang) => [s_top * Math.cos(ang), s_top * Math.sin(ang)]);
   const outer = a.map((ang, i) => [s_bottom[i] * Math.cos(ang), s_bottom[i] * Math.sin(ang)]);
-
   const ang = (rotDeg * Math.PI) / 180;
   const rot2d = ([x, y]) => [x * Math.cos(ang) - y * Math.sin(ang), x * Math.sin(ang) + y * Math.cos(ang)];
   const innerR = inner.map(rot2d);
@@ -332,8 +327,6 @@ function renderKona(topD, botD, planeDeg, rot) {
     if(result)result.style.display="block";
   }
 }
-
-
 
   // ====================== Tabs ======================
   function initTabs(){
