@@ -237,60 +237,64 @@
     return {w:maxX-minX,h:maxY-minY};
   }
 
-// ---- New Kona geometry with 30mm above high side ----
+// ---- New Kona geometry solver with 30mm offset above high side ----
+function solveK_withOffset(Rt, Rb, m, H) {
+  const eps = 1e-9;
+
+  function equation(k) {
+    const y0 = (Rb * (1 - m * k)) / Math.max(k, eps);
+    const rHigh = (k * y0) / (1 + m * k);   // slant radius at φ=π (high side)
+    const alpha = Math.atan(k);
+    const sinA = Math.sin(alpha);
+    // top circle slant radius must equal Rt/sinα, located H above high side
+    return (rHigh / Math.max(sinA, eps)) + H * k - Rt;
+  }
+
+  // Simple bisection search for k > 0
+  let a = eps, b = 1.0, fa = equation(a), fb = equation(b);
+  let tries = 0;
+  while (fa * fb > 0 && tries < 20) {
+    b *= 1.5;
+    fb = equation(b);
+    tries++;
+  }
+  for (let i = 0; i < 100; i++) {
+    const mid = 0.5 * (a + b);
+    const fm = equation(mid);
+    if (Math.abs(fm) < 1e-8) return mid;
+    if (fa * fm <= 0) { b = mid; fb = fm; } else { a = mid; fa = fm; }
+  }
+  return 0.5 * (a + b);
+}
+
 function generateKonaPoints(topD, botD, planeDeg, rotDeg) {
-  const Rt = topD / 2;          // desired top radius
-  const Rb = botD / 2;          // bottom radius (low side)
+  const Rt = topD / 2;
+  const Rb = botD / 2;
+  const H = 30;                          // fixed offset
+  const N = 6;                           // half pattern
   const m = Math.tan((planeDeg * Math.PI) / 180);
-  const N = 6;                  // half pattern segments
 
-  // --- Step 1: find cone slope k consistent with low-side bottom radius ---
-  // At φ=0 (low side): r = Rb. Relation: y0 = Rb*(1 - m*k)/k
-  // We'll search k > 0 to find valid cone geometry
-  function bottomRadiusAt(k, phi) {
-    const den = 1 - m * k * Math.cos(phi);
-    if (Math.abs(den) < 1e-8) return Infinity;
-    const y0 = (Rb * (1 - m * k)) / k;
-    return (k * y0) / den;
-  }
-
-  // heuristic: pick k ~ (Rb-Rt)/30 initially
-  let kGuess = Math.max(0.01, (Rb - Rt) / 30);
-  let k = kGuess;
-
-  // --- Step 2: compute high side height for this k ---
-  function highSideHeight(k) {
-    const y0 = (Rb * (1 - m * k)) / k;
-    // at φ=π (high side): z_high = y0 / (1 + m*k)
-    return y0 / (1 + m * k);
-  }
-
-  // We don't force Rt via k anymore. Instead we accept slope kGuess.
-  // The top circle will be placed 30mm above z_high with radius Rt.
-
+  // Solve slope k with the offset condition
+  const k = solveK_withOffset(Rt, Rb, m, H);
   const alpha = Math.atan(k);
   const sinA = Math.sin(alpha);
-  const zHigh = highSideHeight(k);
-  const zTop = zHigh + 30;  // 30mm above high side
-  const s_top = Rt / Math.max(sinA, 1e-9);
 
-  // --- Step 3: bottom radii around φ ∈ [0,π] ---
+  const y0 = (Rb * (1 - m * k)) / Math.max(k, 1e-9);
+
   const phi = [...Array(N)].map((_, i) => (Math.PI * i) / N);
-  const y0 = (Rb * (1 - m * k)) / k;
   const r_bottom = phi.map((p) => {
     const den = 1 - m * k * Math.cos(p);
     const safe = Math.abs(den) < 1e-8 ? (den >= 0 ? 1e-8 : -1e-8) : den;
     return (k * y0) / safe;
   });
-  const s_bottom = r_bottom.map((r) => r / Math.max(sinA, 1e-9));
 
-  // --- Step 4: development angles ---
+  const s_top = Rt / Math.max(sinA, 1e-9);
+  const s_bottom = r_bottom.map((r) => r / Math.max(sinA, 1e-9));
   const a = phi.map((p) => p * sinA);
 
   const inner = a.map((ang) => [s_top * Math.cos(ang), s_top * Math.sin(ang)]);
   const outer = a.map((ang, i) => [s_bottom[i] * Math.cos(ang), s_bottom[i] * Math.sin(ang)]);
 
-  // rotate for layout
   const ang = (rotDeg * Math.PI) / 180;
   const rot2d = ([x, y]) => [x * Math.cos(ang) - y * Math.sin(ang), x * Math.sin(ang) + y * Math.cos(ang)];
   const innerR = inner.map(rot2d);
@@ -328,6 +332,7 @@ function renderKona(topD, botD, planeDeg, rot) {
     if(result)result.style.display="block";
   }
 }
+
 
 
   // ====================== Tabs ======================
