@@ -10,7 +10,6 @@
   // ---------------- Library detection ----------------
   function getLibs() {
     const jsPDF = window.jspdf?.jsPDF || window.jsPDF;
-
     let svg2pdf = window.svg2pdf || window.SVG2PDF;
     if (svg2pdf && typeof svg2pdf !== "function") {
       if (typeof svg2pdf.default === "function") {
@@ -22,7 +21,6 @@
         svg2pdf = null;
       }
     }
-
     if (!jsPDF || !svg2pdf) {
       alert("PDF-export misslyckades: jsPDF/svg2pdf inte hittad.");
       throw new Error("Libraries not found");
@@ -63,43 +61,27 @@
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         if (r !== 0 || c !== 0) pdf.addPage();
-
-        const xMm = c * pageW;
-        const yMm = r * pageH;
-
+        const xMm = c * pageW, yMm = r * pageH;
         const clone = svg.cloneNode(true);
         const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
         g.setAttribute("transform", `translate(${-xMm},${-yMm})`);
-
         const clipId = `clip_${r}_${c}`;
         const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
         const clipPath = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
         clipPath.setAttribute("id", clipId);
         const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-        rect.setAttribute("x", xMm);
-        rect.setAttribute("y", yMm);
-        rect.setAttribute("width", pageW);
-        rect.setAttribute("height", pageH);
-        clipPath.appendChild(rect);
-        defs.appendChild(clipPath);
-
+        rect.setAttribute("x", xMm); rect.setAttribute("y", yMm);
+        rect.setAttribute("width", pageW); rect.setAttribute("height", pageH);
+        clipPath.appendChild(rect); defs.appendChild(clipPath);
         const originalBody = svg.querySelector("g") || svg;
         const body = originalBody.cloneNode(true);
         body.setAttribute("clip-path", `url(#${clipId})`);
-        g.appendChild(body);
-
-        clone.innerHTML = "";
-        clone.appendChild(defs);
-        clone.appendChild(g);
-        clone.setAttribute("width", pageW + "mm");
-        clone.setAttribute("height", pageH + "mm");
+        g.appendChild(body); clone.innerHTML = ""; clone.appendChild(defs); clone.appendChild(g);
+        clone.setAttribute("width", pageW + "mm"); clone.setAttribute("height", pageH + "mm");
         clone.setAttribute("viewBox", `0 0 ${pageW} ${pageH}`);
-
         await svg2pdf(clone, pdf, {
-          x: marginPt,
-          y: marginPt,
-          width: pageWpt - 2 * marginPt,
-          height: pageHpt - 2 * marginPt,
+          x: marginPt, y: marginPt,
+          width: pageWpt - 2 * marginPt, height: pageHpt - 2 * marginPt,
           useCSS: true,
         });
       }
@@ -137,31 +119,29 @@
     let svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${L}mm" height="${Hs}mm" viewBox="0 0 ${L} ${Hs}" shape-rendering="geometricPrecision">`;
     svg+=`<rect x="0" y="0" width="${L}" height="${Hs}" fill="none" stroke="black" stroke-width="0.4"/>`;
     svg+=`<polyline points="${poly}" fill="none" stroke="black" stroke-width="0.4"/>`;
-    svg+=`<text x="${L/2}" y="5" font-size="5" text-anchor="middle">${L.toFixed(1)} mm</text>`;
-    svg+=`<text x="5" y="${Hs/2}" font-size="5" text-anchor="middle" transform="rotate(-90 5,${Hs/2})">${Hs.toFixed(1)} mm</text>`;
     svg+=`</svg>`;
     $("stosPreview").innerHTML=svg;
-    $("stosMeta").textContent=`Bredd (omkrets/2) = ${L.toFixed(1)} mm · Skärningshöjd = ${Hs.toFixed(1)} mm · H(min) = ${Hmin.toFixed(1)} mm`;
+    $("stosMeta").textContent=`Bredd = ${L.toFixed(1)} mm · Skärningshöjd = ${Hs.toFixed(1)} mm · H(min) = ${Hmin.toFixed(1)} mm`;
     $("stosResult").style.display='block';
     hookExport("stosPreview","stosSvg","stosPdf","stosPrint","stos_halvmonster");
   });
 
-  // ---------------- KONA (general oblique cut, half-pattern) ----------------
-
+  // ---------------- KONA (fixed) ----------------
   let currentRot = 0;
 
   $("konaForm").addEventListener("submit", (e) => {
     e.preventDefault();
-    const topD = parseFloat($("konaTop").value);
-    const botD = parseFloat($("konaBottom").value);
-    const planeDeg = parseFloat($("konaSlope").value); // plane tilt relative to horizontal
-    if (isNaN(topD) || isNaN(botD) || isNaN(planeDeg)) return;
-
-    const best = findBestRotation(topD, botD, planeDeg);
-    currentRot = best;
-    $("konaRotSlider").value = currentRot;
-    $("konaRotInput").value = currentRot;
-    renderKona(topD, botD, planeDeg, currentRot);
+    try {
+      const topD = parseFloat($("konaTop").value);
+      const botD = parseFloat($("konaBottom").value);
+      const planeDeg = parseFloat($("konaSlope").value);
+      if (isNaN(topD) || isNaN(botD) || isNaN(planeDeg)) return;
+      const best = findBestRotation(topD, botD, planeDeg);
+      currentRot = best;
+      $("konaRotSlider").value = currentRot;
+      $("konaRotInput").value = currentRot;
+      renderKona(topD, botD, planeDeg, currentRot);
+    } catch(err){ console.error("Kona error:", err); }
   });
 
   $("konaRotSlider").addEventListener("input", (e) => {
@@ -176,21 +156,25 @@
   });
 
   function rerenderIfInputs() {
-    const t = parseFloat($("konaTop").value);
-    const b = parseFloat($("konaBottom").value);
-    const s = parseFloat($("konaSlope").value);
-    if (!isNaN(t) && !isNaN(b) && !isNaN(s)) renderKona(t, b, s, currentRot);
+    try {
+      const t = parseFloat($("konaTop").value);
+      const b = parseFloat($("konaBottom").value);
+      const s = parseFloat($("konaSlope").value);
+      if (!isNaN(t) && !isNaN(b) && !isNaN(s)) renderKona(t, b, s, currentRot);
+    } catch(err){ console.error("Kona rerender error:", err); }
   }
 
   function findBestRotation(topD, botD, planeDeg) {
     let bestAngle = 0, bestScore = -Infinity;
     for (let ang = 0; ang < 180; ang += 5) {
-      const box = computeKonaBBox(topD, botD, planeDeg, ang);
-      const m = 10;
-      const fitP = Math.min((A4.wMm - 2 * m) / box.w, (A4.hMm - 2 * m) / box.h);
-      const fitL = Math.min((A4.hMm - 2 * m) / box.w, (A4.wMm - 2 * m) / box.h);
-      const score = Math.max(fitP, fitL);
-      if (score > bestScore) { bestScore = score; bestAngle = ang; }
+      try {
+        const box = computeKonaBBox(topD, botD, planeDeg, ang);
+        const m = 10;
+        const fitP = Math.min((A4.wMm - 2 * m) / box.w, (A4.hMm - 2 * m) / box.h);
+        const fitL = Math.min((A4.hMm - 2 * m) / box.w, (A4.wMm - 2 * m) / box.h);
+        const score = Math.max(fitP, fitL);
+        if (score > bestScore) { bestScore = score; bestAngle = ang; }
+      } catch{}
     }
     return bestAngle;
   }
@@ -205,10 +189,8 @@
     return { w: maxX - minX, h: maxY - minY };
   }
 
-  // Solve for k from: Rt = Rb * (1 - m k)/(1 + m k) - H*k  with m = tan(gamma)
   function solveK(Rt, Rb, H, m) {
     const f = (k) => (Rb * (1 - m * k)) / (1 + m * k) - H * k - Rt;
-    // search domain (0, 1/m) (avoid singularity when m*k -> 1)
     const kMax = (m > 0 ? Math.min(0.95 / m, 0.95) : 0.95);
     let k = Math.min(0.1, kMax * 0.5);
     for (let i = 0; i < 80; i++) {
@@ -227,78 +209,59 @@
   function generateKonaPoints(topD, botD, planeDeg, rotDeg) {
     const Rt = topD / 2;
     const Rb = botD / 2;
-    const H = 30;  // fixed: top plane is 30 mm above the high side (as per your spec)
-    const N = 6;   // half-pattern: 6 segments
+    const H = 30;
+    const N = 6; // half-pattern
 
-    const m = Math.tan((planeDeg * Math.PI) / 180); // plane tilt relative to horizontal
-    const k = solveK(Rt, Rb, H, m);                 // cone half-angle slope (r = k*y)
+    const m = Math.tan((planeDeg * Math.PI) / 180);
+    const k = solveK(Rt, Rb, H, m);
     const alpha = Math.atan(k);
     const sinA = Math.sin(alpha);
-
-    // plane constant y0 from low-side radius constraint
     const y0 = (Rb * (1 - m * k)) / k;
-
-    // radii around azimuth: r(phi) = k*y0 / (1 - m*k*cosφ)
-    // use half circumference φ in [0, π] for half-pattern
     const phi = [...Array(N)].map((_, i) => (Math.PI * i) / N);
     const r_bottom = phi.map((p) => {
       const den = (1 - m * k * Math.cos(p));
       return (k * y0) / (Math.abs(den) < 1e-9 ? (den >= 0 ? 1e-9 : -1e-9) : den);
     });
-
     const s_top = Rt / sinA;
     const s_bottom = r_bottom.map((r) => r / sinA);
-
-    // development polar angle a = φ sinα
     const a = phi.map((p) => p * sinA);
-
-    // polar -> cartesian
     const inner = a.map((ang) => [s_top * Math.cos(ang), s_top * Math.sin(ang)]);
     const outer = a.map((ang, i) => [s_bottom[i] * Math.cos(ang), s_bottom[i] * Math.sin(ang)]);
-
-    // rotate
     const ang = (rotDeg * Math.PI) / 180;
     const rot2d = ([x, y]) => [x * Math.cos(ang) - y * Math.sin(ang), x * Math.sin(ang) + y * Math.cos(ang)];
     const innerR = inner.map(rot2d);
     const outerR = outer.map(rot2d);
-
-    // generators
     const gens = innerR.map((p, i) => [p, outerR[i]]);
-
     return { inner: innerR, outer: outerR, gens };
   }
 
   function renderKona(topD, botD, planeDeg, rot) {
-    const pts = generateKonaPoints(topD, botD, planeDeg, rot);
-    const gens = pts.gens;
-
-    // bbox
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    pts.inner.concat(pts.outer).concat(gens.flat()).forEach(([x, y]) => {
-      if (x < minX) minX = x; if (y < minY) minY = y;
-      if (x > maxX) maxX = x; if (y > maxY) maxY = y;
-    });
-
-    const m = 10;
-    minX -= m; minY -= m; maxX += m; maxY += m;
-    const width = maxX - minX, height = maxY - minY;
-    const pl = (arr) => arr.map(([x, y]) => `${(x - minX).toFixed(2)},${(y - minY).toFixed(2)}`).join(" ");
-
-    let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}mm" height="${height}mm" viewBox="0 0 ${width} ${height}" shape-rendering="geometricPrecision">`;
-    svg += `<g fill="none" stroke="black" stroke-width="0.4">`;
-    svg += `<polyline points="${pl(pts.inner)}"/>`;
-    svg += `<polyline points="${pl(pts.outer)}"/>`;
-    gens.forEach((seg) => {
-      svg += `<line x1="${(seg[0][0]-minX).toFixed(2)}" y1="${(seg[0][1]-minY).toFixed(2)}" x2="${(seg[1][0]-minX).toFixed(2)}" y2="${(seg[1][1]-minY).toFixed(2)}"/>`;
-    });
-    // close edges at both ends for clarity
-    svg += `<line x1="${(pts.inner[0][0]-minX).toFixed(2)}" y1="${(pts.inner[0][1]-minY).toFixed(2)}" x2="${(pts.outer[0][0]-minX).toFixed(2)}" y2="${(pts.outer[0][1]-minY).toFixed(2)}"/>`;
-    svg += `<line x1="${(pts.inner[pts.inner.length-1][0]-minX).toFixed(2)}" y1="${(pts.inner[pts.inner.length-1][1]-minY).toFixed(2)}" x2="${(pts.outer[pts.outer.length-1][0]-minX).toFixed(2)}" y2="${(pts.outer[pts.outer.length-1][1]-minY).toFixed(2)}"/>`;
-    svg += `</g></svg>`;
-
-    $("konaPreview").innerHTML = svg;
-    $("konaMeta").textContent = `Rotation: ${rot}°`;
-    $("konaResult").style.display = "block";
-    hookExport("konaPreview", "konaSvg", "konaPdf", "konaPrint", "kona_halvmonster");
+    try {
+      const pts = generateKonaPoints(topD, botD, planeDeg, rot);
+      const gens = pts.gens;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      pts.inner.concat(pts.outer).concat(gens.flat()).forEach(([x, y]) => {
+        if (x < minX) minX = x; if (y < minY) minY = y;
+        if (x > maxX) maxX = x; if (y > maxY) maxY = y;
+      });
+      const m = 10; minX -= m; minY -= m; maxX += m; maxY += m;
+      const width = maxX - minX, height = maxY - minY;
+      const pl = (arr) => arr.map(([x, y]) => `${(x - minX).toFixed(2)},${(y - minY).toFixed(2)}`).join(" ");
+      let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}mm" height="${height}mm" viewBox="0 0 ${width} ${height}" shape-rendering="geometricPrecision">`;
+      svg += `<g fill="none" stroke="black" stroke-width="0.4">`;
+      svg += `<polyline points="${pl(pts.inner)}"/>`;
+      svg += `<polyline points="${pl(pts.outer)}"/>`;
+      gens.forEach((seg) => {
+        svg += `<line x1="${(seg[0][0]-minX).toFixed(2)}" y1="${(seg[0][1]-minY).toFixed(2)}" x2="${(seg[1][0]-minX).toFixed(2)}" y2="${(seg[1][1]-minY).toFixed(2)}"/>`;
+      });
+      svg += `</g></svg>`;
+      $("konaPreview").innerHTML = svg;
+      $("konaMeta").textContent = `Rotation: ${rot}°`;
+      $("konaResult").style.display = "block";
+      hookExport("konaPreview", "konaSvg", "konaPdf", "konaPrint", "kona_halvmonster");
+    } catch(err) {
+      console.error("RenderKona error:", err);
+      $("konaPreview").innerHTML = "<p style='color:red'>Kunde inte generera Kona-mönster.</p>";
+    }
   }
 })();
