@@ -52,12 +52,13 @@
     const heightMm = parseFloat(svg.getAttribute("height"));
     const pageW = A4.wMm - 2 * A4.marginMm;
     const pageH = A4.hMm - 2 * A4.marginMm;
-    const cols = Math.ceil(widthMm / pageW);
-    const rows = Math.ceil(heightMm / pageH);
     const pdf = new jsPDF({ unit: "pt", format: "a4" });
     const pageWpt = pdf.internal.pageSize.getWidth();
     const pageHpt = pdf.internal.pageSize.getHeight();
     const marginPt = mmToPt(A4.marginMm);
+    const cols = Math.ceil(widthMm / pageW);
+    const rows = Math.ceil(heightMm / pageH);
+
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         if (r !== 0 || c !== 0) pdf.addPage();
@@ -108,27 +109,31 @@
     if (printBtn) printBtn.onclick = () => window.print();
   }
 
-  // ---------------- Stos logic (unchanged) ----------------
-  function computeStos(d, h, slope) {
+  // ---------------- Stos logic (restored arc length version) ----------------
+  function computeStos(d, h, slope, steps = 180) {
     const r = d / 2;
     const T = Math.tan((slope * Math.PI) / 180);
     const pts = [];
-    for (let i = 0; i <= 180; i += 5) {
-      const rad = (i * Math.PI) / 180;
-      const y = r * Math.cos(rad);
-      const x = r * Math.sin(rad);
-      const z = h + T * y;
-      pts.push([x, z]);
+    for (let i = 0; i <= steps; i++) {
+      const th = (Math.PI * i) / steps; // 0..π for half circumference
+      const arc = r * th;               // arc length (X axis, flattened)
+      const y = r * Math.cos(th);
+      const z = h + T * y;              // height offset
+      pts.push([arc, z]);
     }
     return pts;
   }
 
   function renderStos(d, h, slope) {
     const pts = computeStos(d, h, slope);
-    const w = d;
+    const w = Math.PI * d / 2; // half circumference
     const maxH = Math.max(...pts.map((p) => p[1]));
-    const svg = [`<svg xmlns="http://www.w3.org/2000/svg" width="${w}mm" height="${maxH}mm" viewBox="0 0 ${w} ${maxH}">`];
-    svg.push(`<path d="M ${pts.map((p) => `${p[0]},${maxH - p[1]}`).join(" L ")}" fill="none" stroke="black"/>`);
+    const svg = [
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${w}mm" height="${maxH}mm" viewBox="0 0 ${w} ${maxH}">`
+    ];
+    svg.push(
+      `<path d="M ${pts.map((p) => `${p[0].toFixed(2)},${maxH - p[1].toFixed(2)}`).join(" L ")}" fill="none" stroke="black"/>`
+    );
     svg.push("</svg>");
     return svg.join("");
   }
@@ -145,8 +150,22 @@
   });
   hookExport("stosPreview", "stosSvg", "stosPdf", "stosPrint");
 
-  // ---------------- Kona logic is now fully in kona.module.js ----------------
-  // app.js no longer carries any of the old or new Kona code.
-  // Kona UI events and rendering are wired in kona.module.js
+  // ---------------- Tab switching ----------------
+  document.addEventListener("DOMContentLoaded", () => {
+    const btns = document.querySelectorAll(".tab-btn");
+    const tabs = document.querySelectorAll(".tab");
+    btns.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        btns.forEach((b) => b.classList.remove("active"));
+        tabs.forEach((t) => t.classList.remove("active"));
+        btn.classList.add("active");
+        const targetId = "tab-" + btn.dataset.tab;
+        const target = document.getElementById(targetId);
+        if (target) target.classList.add("active");
+      });
+    });
+  });
+
+  // ---------------- Kona logic is in kona.module.js ----------------
 
 })();
