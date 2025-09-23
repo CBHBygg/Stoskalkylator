@@ -8,8 +8,13 @@
 
   function getLibs() {
     const jsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
-    let svg2pdf = window.svg2pdf;
-    return { jsPDF, svg2pdf };
+    // Robust svg2pdf resolution across UMD variants
+    let s = window.svg2pdf || window.SVG2PDF || (window.svg2pdf && window.svg2pdf.svg2pdf);
+    if (s && typeof s !== "function") {
+      if (typeof s.default === "function") s = s.default;
+      else if (typeof s.svg2pdf === "function") s = s.svg2pdf;
+    }
+    return { jsPDF, svg2pdf: s };
   }
 
   // ---------------- Export helpers ----------------
@@ -41,30 +46,20 @@
     }
     const svg = document.querySelector(`#${previewId} svg`);
     if (!svg) { alert("Ingen SVG att exportera."); return; }
-    const widthMm = parseFloat(svg.getAttribute("width"));
-    const heightMm = parseFloat(svg.getAttribute("height"));
-    const pageW = A4.wMm - 2 * A4.marginMm;
-    const pageH = A4.hMm - 2 * A4.marginMm;
+
     const pdf = new jsPDF({ unit: "pt", format: "a4" });
     const pageWpt = pdf.internal.pageSize.getWidth();
     const pageHpt = pdf.internal.pageSize.getHeight();
     const marginPt = mmToPt(A4.marginMm);
-    const cols = Math.ceil(widthMm / pageW);
-    const rows = Math.ceil(heightMm / pageH);
 
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        if (r !== 0 || c !== 0) pdf.addPage();
-        const clone = svg.cloneNode(true);
-        await svg2pdf(clone, pdf, {
-          x: marginPt,
-          y: marginPt,
-          width: pageWpt - 2 * marginPt,
-          height: pageHpt - 2 * marginPt,
-          useCSS: true,
-        });
-      }
-    }
+    await svg2pdf(svg, pdf, {
+      x: marginPt,
+      y: marginPt,
+      width: pageWpt - 2 * marginPt,
+      height: pageHpt - 2 * marginPt,
+      useCSS: true,
+    });
+
     pdf.save((filenameBase || "pattern") + ".pdf");
   }
 
@@ -77,7 +72,7 @@
     if (printBtn) printBtn.onclick = () => window.print();
   }
 
-  // ---------------- Stos logic (restored + box with labels) ----------------
+  // ---------------- Stos logic (half development, boxed tightly) ----------------
   function computeStos(d, h, slope, steps = 180) {
     const r = d / 2;
     const T = Math.tan((slope * Math.PI) / 180);
@@ -86,7 +81,7 @@
       const th = (Math.PI * i) / steps; // 0..π for half circumference
       const arc = r * th;               // arc length (X axis, flattened)
       const y = r * Math.cos(th);
-      const z = h + T * y;              // height offset
+      const z = h + T * y;              // height along cut
       pts.push([arc, z]);
     }
     return pts;
@@ -94,21 +89,33 @@
 
   function renderStos(d, h, slope) {
     const pts = computeStos(d, h, slope);
-    const w = Math.PI * d / 2; // half circumference
-    const maxH = Math.max(...pts.map((p) => p[1]));
+    const w = Math.PI * d / 2; // half circumference (mm)
+    const zVals = pts.map((p) => p[1]);
+    const minZ = Math.min(...zVals);
+    const maxZ = Math.max(...zVals);
+    const boxH = maxZ - minZ;
 
+    // Build SVG with tight vertical boxing; shift Y so minZ maps to 0
     const svg = [
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${w}mm" height="${maxH}mm" viewBox="0 0 ${w} ${maxH}" font-size="6">`
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${w.toFixed(1)}mm" height="${boxH.toFixed(1)}mm" viewBox="0 0 ${w.toFixed(2)} ${boxH.toFixed(2)}" font-size="6">`
     ];
+
     // Cutout path
-    svg.push(
-      `<path d="M ${pts.map((p) => `${p[0].toFixed(2)},${maxH - p[1].toFixed(2)}`).join(" L ")}" fill="none" stroke="black"/>`
-    );
-    // Enclosing box
-    svg.push(`<rect x="0" y="0" width="${w}" height="${maxH}" fill="none" stroke="black" stroke-dasharray="4"/>`);
-    // Labels
-    svg.push(`<text x="${w/2}" y="12" text-anchor="middle" fill="blue">${w.toFixed(1)} mm</text>`);
-    svg.push(`<text x="${w-2}" y="${maxH/2}" text-anchor="end" dominant-baseline="middle" fill="blue">${maxH.toFixed(1)} mm</text>`);
+    const pathD = pts.map((p) => {
+      const x = p[0];
+      const y = (p[1] - minZ);         // 0..boxH (upwards); SVG y grows down, so flip below
+      return `${x.toFixed(2)},${(boxH - y).toFixed(2)}`;
+    }).join(" L ");
+    svg.push(`<path d="M ${pathD}" fill="none" stroke="black"/>`);
+
+    // Tight enclosing box (only around the cutout)
+    svg.push(`<rect x="0" y="0" width="${w.toFixed(2)}" height="${boxH.toFixed(2)}" fill="none" stroke="black" stroke-dasharray="4"/>`);
+
+    // Dimension labels inside the box
+    svg.push(`<text x="${(w/2).toFixed(2)}" y="10" text-anchor="middle" fill="blue">${w.toFixed(1)} mm</text>`);
+    // Height label rotated, centered on right edge, inside
+    svg.push(`<text x="${(w-3).toFixed(2)}" y="${(boxH/2).toFixed(2)}" text-anchor="middle" dominant-baseline="middle" fill="blue" transform="rotate(-90 ${(w-3).toFixed(2)} ${(boxH/2).toFixed(2)})">${boxH.toFixed(1)} mm</text>`);
+
     svg.push("</svg>");
     return svg.join("");
   }
@@ -141,6 +148,5 @@
     });
   });
 
-  // ---------------- Kona logic is in kona.module.js ----------------
-
+  // ---------------- Kona is handled by kona.module.js ----------------
 })();
