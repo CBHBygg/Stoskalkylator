@@ -3,20 +3,18 @@
 
   // ---------------- Utils ----------------
   const $ = (id) => document.getElementById(id);
-  const mmToPt = (mm) => (mm * 72.0) / 25.4;
   const A4 = { wMm: 210, hMm: 297, marginMm: 5 };
 
   function getLibs() {
-  const { jsPDF } = window.jspdf || {};
-  // svg2pdf.umd.min.js exposes { svg2pdf: function }
-  let s = null;
-  if (typeof window.svg2pdf === "function") {
-    s = window.svg2pdf;
-  } else if (window.svg2pdf && typeof window.svg2pdf.svg2pdf === "function") {
-    s = window.svg2pdf.svg2pdf;
+    const { jsPDF } = window.jspdf || {};
+    let s = null;
+    if (typeof window.svg2pdf === "function") {
+      s = window.svg2pdf;
+    } else if (window.svg2pdf && typeof window.svg2pdf.svg2pdf === "function") {
+      s = window.svg2pdf.svg2pdf;
+    }
+    return { jsPDF, svg2pdf: s };
   }
-  return { jsPDF, svg2pdf: s };
-}
 
   // ---------------- Export helpers ----------------
   function downloadText(filename, text) {
@@ -30,9 +28,7 @@
   }
 
   function exportSVG(previewId, filename) {
-    const wrap = document.querySelector(`#${previewId}`);
-    if (!wrap) return;
-    const svg = wrap.querySelector("svg");
+    const svg = document.querySelector(`#${previewId} svg`);
     if (!svg) return;
     const serializer = new XMLSerializer();
     const text = serializer.serializeToString(svg);
@@ -46,18 +42,12 @@
       return;
     }
     const svg = document.querySelector(`#${previewId} svg`);
-    if (!svg) { alert("Ingen SVG att exportera."); return; }
-
-    // Use mm units for correct scaling
+    if (!svg) {
+      alert("Ingen SVG att exportera.");
+      return;
+    }
     const doc = new jsPDF({ unit: "mm", format: "a4" });
-    const margin = A4.marginMm;
-    svg2pdf(svg, doc, {
-      x: margin,
-      y: margin,
-      width: A4.wMm - 2 * margin,
-      height: A4.hMm - 2 * margin,
-      useCSS: true,
-    });
+    await svg2pdf(svg, doc, { x: 0, y: 0 });
     doc.save((filenameBase || "pattern") + ".pdf");
   }
 
@@ -76,10 +66,10 @@
     const T = Math.tan((slope * Math.PI) / 180);
     const pts = [];
     for (let i = 0; i <= steps; i++) {
-      const th = (Math.PI * i) / steps; // 0..π for half circumference
-      const arc = r * th;               // arc length (X axis, flattened)
+      const th = (Math.PI * i) / steps; // 0..π
+      const arc = r * th;
       const y = r * Math.cos(th);
-      const z = h + T * y;              // height along cut
+      const z = h + T * y;
       pts.push([arc, z]);
     }
     return pts;
@@ -87,32 +77,24 @@
 
   function renderStos(d, h, slope) {
     const pts = computeStos(d, h, slope);
-    const w = Math.PI * d / 2; // half circumference (mm)
+    const w = Math.PI * d / 2;
     const zVals = pts.map((p) => p[1]);
     const minZ = Math.min(...zVals);
     const maxZ = Math.max(...zVals);
     const boxH = maxZ - minZ;
 
-    // Build SVG with tight vertical boxing; shift Y so minZ maps to 0
     const svg = [
       `<svg xmlns="http://www.w3.org/2000/svg" width="${w.toFixed(1)}mm" height="${boxH.toFixed(1)}mm" viewBox="0 0 ${w.toFixed(2)} ${boxH.toFixed(2)}" font-size="6">`
     ];
-
-    // Cutout path
     const pathD = pts.map((p) => {
       const x = p[0];
       const y = (p[1] - minZ);
       return `${x.toFixed(2)},${(boxH - y).toFixed(2)}`;
     }).join(" L ");
     svg.push(`<path d="M ${pathD}" fill="none" stroke="black"/>`);
-
-    // Tight enclosing box (only around the cutout)
     svg.push(`<rect x="0" y="0" width="${w.toFixed(2)}" height="${boxH.toFixed(2)}" fill="none" stroke="black" stroke-dasharray="4"/>`);
-
-    // Dimension labels inside the box
     svg.push(`<text x="${(w/2).toFixed(2)}" y="10" text-anchor="middle" fill="blue">${w.toFixed(1)} mm</text>`);
     svg.push(`<text x="${(w-3).toFixed(2)}" y="${(boxH/2).toFixed(2)}" text-anchor="middle" dominant-baseline="middle" fill="blue" transform="rotate(-90 ${(w-3).toFixed(2)} ${(boxH/2).toFixed(2)})">${boxH.toFixed(1)} mm</text>`);
-
     svg.push("</svg>");
     return svg.join("");
   }
@@ -145,5 +127,5 @@
     });
   });
 
-  // ---------------- Kona handled by kona.module.js ----------------
+  // Kona handled separately
 })();
