@@ -7,13 +7,9 @@
   const A4 = { wMm: 210, hMm: 297, marginMm: 5 };
 
   function getLibs() {
-    const jsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+    const { jsPDF } = window.jspdf || {};
     // Robust svg2pdf resolution across UMD variants
-    let s = window.svg2pdf || window.SVG2PDF || (window.svg2pdf && window.svg2pdf.svg2pdf);
-    if (s && typeof s !== "function") {
-      if (typeof s.default === "function") s = s.default;
-      else if (typeof s.svg2pdf === "function") s = s.svg2pdf;
-    }
+    let s = window.svg2pdf || window.SVG2PDF || (window.svg2pdf && window.svg2pdf.default);
     return { jsPDF, svg2pdf: s };
   }
 
@@ -38,7 +34,7 @@
     downloadText(filename || "pattern.svg", text);
   }
 
-  async function exportMultiPagePDF(previewId, filenameBase) {
+  async function exportPDF(previewId, filenameBase) {
     const { jsPDF, svg2pdf } = getLibs();
     if (!jsPDF || !svg2pdf) {
       alert("PDF-export misslyckades: jsPDF/svg2pdf inte laddad.");
@@ -47,20 +43,17 @@
     const svg = document.querySelector(`#${previewId} svg`);
     if (!svg) { alert("Ingen SVG att exportera."); return; }
 
-    const pdf = new jsPDF({ unit: "pt", format: "a4" });
-    const pageWpt = pdf.internal.pageSize.getWidth();
-    const pageHpt = pdf.internal.pageSize.getHeight();
-    const marginPt = mmToPt(A4.marginMm);
-
-    await svg2pdf(svg, pdf, {
-      x: marginPt,
-      y: marginPt,
-      width: pageWpt - 2 * marginPt,
-      height: pageHpt - 2 * marginPt,
+    // Use mm units for correct scaling
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    const margin = A4.marginMm;
+    svg2pdf(svg, doc, {
+      x: margin,
+      y: margin,
+      width: A4.wMm - 2 * margin,
+      height: A4.hMm - 2 * margin,
       useCSS: true,
     });
-
-    pdf.save((filenameBase || "pattern") + ".pdf");
+    doc.save((filenameBase || "pattern") + ".pdf");
   }
 
   function hookExport(previewId, svgBtnId, pdfBtnId, printBtnId) {
@@ -68,7 +61,7 @@
     const pdfBtn = $(pdfBtnId);
     const printBtn = $(printBtnId);
     if (svgBtn) svgBtn.onclick = () => exportSVG(previewId, "pattern.svg");
-    if (pdfBtn) pdfBtn.onclick = () => exportMultiPagePDF(previewId, "pattern");
+    if (pdfBtn) pdfBtn.onclick = () => exportPDF(previewId, "pattern");
     if (printBtn) printBtn.onclick = () => window.print();
   }
 
@@ -103,7 +96,7 @@
     // Cutout path
     const pathD = pts.map((p) => {
       const x = p[0];
-      const y = (p[1] - minZ);         // 0..boxH (upwards); SVG y grows down, so flip below
+      const y = (p[1] - minZ);
       return `${x.toFixed(2)},${(boxH - y).toFixed(2)}`;
     }).join(" L ");
     svg.push(`<path d="M ${pathD}" fill="none" stroke="black"/>`);
@@ -113,7 +106,6 @@
 
     // Dimension labels inside the box
     svg.push(`<text x="${(w/2).toFixed(2)}" y="10" text-anchor="middle" fill="blue">${w.toFixed(1)} mm</text>`);
-    // Height label rotated, centered on right edge, inside
     svg.push(`<text x="${(w-3).toFixed(2)}" y="${(boxH/2).toFixed(2)}" text-anchor="middle" dominant-baseline="middle" fill="blue" transform="rotate(-90 ${(w-3).toFixed(2)} ${(boxH/2).toFixed(2)})">${boxH.toFixed(1)} mm</text>`);
 
     svg.push("</svg>");
@@ -148,5 +140,5 @@
     });
   });
 
-  // ---------------- Kona is handled by kona.module.js ----------------
+  // ---------------- Kona handled by kona.module.js ----------------
 })();
