@@ -7,11 +7,16 @@
   const A4 = { wMm: 210, hMm: 297, marginMm: 5 };
 
   function getLibs() {
-    const { jsPDF } = window.jspdf || {};
-    // Robust svg2pdf resolution across UMD variants
-    let s = window.svg2pdf || window.SVG2PDF || (window.svg2pdf && window.svg2pdf.default);
-    return { jsPDF, svg2pdf: s };
+  const { jsPDF } = window.jspdf || {};
+  // svg2pdf.umd.min.js exposes { svg2pdf: function }
+  let s = null;
+  if (typeof window.svg2pdf === "function") {
+    s = window.svg2pdf;
+  } else if (window.svg2pdf && typeof window.svg2pdf.svg2pdf === "function") {
+    s = window.svg2pdf.svg2pdf;
   }
+  return { jsPDF, svg2pdf: s };
+}
 
   // ---------------- Export helpers ----------------
   function downloadText(filename, text) {
