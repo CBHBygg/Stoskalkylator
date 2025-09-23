@@ -43,7 +43,8 @@
     downloadText(filename || "pattern.svg", text);
   }
 
-  async function exportMultiPagePDF(previewId, filenameBase) {
+  async 
+function exportMultiPagePDF(previewId, filenameBase) {
     const { jsPDF, svg2pdf } = getLibs();
     if (!jsPDF || !svg2pdf) {
       alert("PDF-export misslyckades: jsPDF/svg2pdf inte laddad.");
@@ -51,50 +52,59 @@
     }
     const svg = document.querySelector(`#${previewId} svg`);
     if (!svg) { alert("Ingen SVG att exportera."); return; }
+
     const widthMm = parseFloat(svg.getAttribute("width"));
     const heightMm = parseFloat(svg.getAttribute("height"));
     const pageW = A4.wMm - 2 * A4.marginMm;
     const pageH = A4.hMm - 2 * A4.marginMm;
     const cols = Math.ceil(widthMm / pageW);
     const rows = Math.ceil(heightMm / pageH);
-    const pdf = new jsPDF({ unit: "pt", format: "a4" });
-    const pageWpt = pdf.internal.pageSize.getWidth();
-    const pageHpt = pdf.internal.pageSize.getHeight();
-    const marginPt = mmToPt(A4.marginMm);
+
+    const pdf = new jsPDF({ unit: "mm", format: "a4" });
+
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         if (r !== 0 || c !== 0) pdf.addPage();
         const xMm = c * pageW;
         const yMm = r * pageH;
-        const clone = svg.cloneNode(true);
-        const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-        g.setAttribute("transform", `translate(${-xMm},${-yMm})`);
+
+        // Build a wrapper SVG that clips to the tile area and translates the content
+        const NS = "http://www.w3.org/2000/svg";
+        const wrap = document.createElementNS(NS, "svg");
+        wrap.setAttribute("xmlns", NS);
+        wrap.setAttribute("width", `${pageW}mm`);
+        wrap.setAttribute("height", `${pageH}mm`);
+        wrap.setAttribute("viewBox", `0 0 ${pageW} ${pageH}`);
+
+        const defs = document.createElementNS(NS, "defs");
+        const clipPath = document.createElementNS(NS, "clipPath");
         const clipId = `clip_${r}_${c}`;
-        const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
-        const clipPath = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
         clipPath.setAttribute("id", clipId);
-        const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        const rect = document.createElementNS(NS, "rect");
         rect.setAttribute("x", xMm);
         rect.setAttribute("y", yMm);
         rect.setAttribute("width", pageW);
         rect.setAttribute("height", pageH);
         clipPath.appendChild(rect);
         defs.appendChild(clipPath);
-        const originalBody = svg.querySelector("g") || svg;
-        const body = originalBody.cloneNode(true);
-        body.setAttribute("clip-path", `url(#${clipId})`);
-        g.appendChild(body);
-        clone.innerHTML = "";
-        clone.appendChild(defs);
-        clone.appendChild(g);
-        clone.setAttribute("width", pageW + "mm");
-        clone.setAttribute("height", pageH + "mm");
-        clone.setAttribute("viewBox", `0 0 ${pageW} ${pageH}`);
-        await svg2pdf(clone, pdf, {
-          x: marginPt,
-          y: marginPt,
-          width: pageWpt - 2 * marginPt,
-          height: pageHpt - 2 * marginPt,
+        wrap.appendChild(defs);
+
+        const g = document.createElementNS(NS, "g");
+        g.setAttribute("clip-path", `url(#${clipId})`);
+        g.setAttribute("transform", `translate(${-xMm},${-yMm})`);
+
+        // Clone CHILDREN of the original SVG (not the <svg> itself) to avoid nested <svg> issues
+        Array.from(svg.childNodes).forEach(node => {
+          g.appendChild(node.cloneNode(true));
+        });
+        wrap.appendChild(g);
+
+        // Render this tile into the PDF at the page margins
+        await svg2pdf(wrap, pdf, {
+          x: A4.marginMm,
+          y: A4.marginMm,
+          width: pageW,
+          height: pageH,
           useCSS: true,
         });
       }
@@ -102,16 +112,71 @@
     pdf.save((filenameBase || "pattern") + ".pdf");
   }
 
+
   function hookExport(previewId, svgBtnId, pdfBtnId, printBtnId) {
     const svgBtn = $(svgBtnId);
     const pdfBtn = $(pdfBtnId);
     const printBtn = $(printBtnId);
     if (svgBtn) svgBtn.onclick = () => exportSVG(previewId, "pattern.svg");
     if (pdfBtn) pdfBtn.onclick = () => exportMultiPagePDF(previewId, "pattern");
-    if (printBtn) pdfBtn.onclick = () => exportMultiPagePDF(previewId, "pattern");
+    if (printBtn) printBtn.onclick = () => window.print();
   }
 
-  // ---------------- Kona logic (half pattern with auto rotation) ----------------
+  
+// ---------------- Stos logic (half development, boxed tightly) ----------------
+function computeStos(d, h, slope, steps = 180) {
+  const r = d / 2;
+  const T = Math.tan((slope * Math.PI) / 180);
+  const pts = [];
+  for (let i = 0; i <= steps; i++) {
+    const th = (Math.PI * i) / steps; // 0..π
+    const arc = r * th;               // arc length along circumference
+    const y = r * Math.cos(th);
+    const z = h + T * y;              // oblique cut height
+    pts.push([arc, z]);
+  }
+  return pts;
+}
+
+function renderStos(d, h, slope) {
+  const pts = computeStos(d, h, slope);
+  const w = Math.PI * d / 2; // half circumference
+  const zVals = pts.map((p) => p[1]);
+  const minZ = Math.min(...zVals);
+  const maxZ = Math.max(...zVals);
+  const boxH = maxZ - minZ;
+
+  const pathD = pts.map(([x,z]) => {
+    const y = (z - minZ);
+    return `${x.toFixed(2)},${(boxH - y).toFixed(2)}`;
+  }).join(" L ");
+
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w.toFixed(2)}mm" height="${boxH.toFixed(2)}mm" viewBox="0 0 ${w.toFixed(2)} ${boxH.toFixed(2)}" font-size="6" shape-rendering="geometricPrecision">`;
+  svg += `<path d="M ${pathD}" fill="none" stroke="black" stroke-width="0.35"/>`;
+  svg += `<rect x="0" y="0" width="${w.toFixed(2)}" height="${boxH.toFixed(2)}" fill="none" stroke="black" stroke-dasharray="4"/>`;
+  svg += `<text x="${(w/2).toFixed(2)}" y="10" text-anchor="middle" fill="blue">${w.toFixed(1)} mm</text>`;
+  svg += `<text x="${(w-3).toFixed(2)}" y="${(boxH/2).toFixed(2)}" text-anchor="middle" dominant-baseline="middle" fill="blue" transform="rotate(-90 ${(w-3).toFixed(2)} ${(boxH/2).toFixed(2)})">${boxH.toFixed(1)} mm</text>`;
+  svg += `</svg>`;
+  $("stosPreview").innerHTML = svg;
+  $("stosMeta").textContent = `Diameter: ${d} mm, Höjd kortaste: ${h} mm, Taklutning: ${slope}°`;
+  $("stosResult").style.display = "block";
+  hookExport("stosPreview", "stosSvg", "stosPdf", "stosPrint");
+}
+
+// Stos form submit
+const stosForm = $("stosForm");
+if (stosForm) {
+  stosForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const d = parseFloat($("stosDiameter").value);
+    const h = parseFloat($("stosHeight").value);
+    const slope = parseFloat($("stosSlope").value);
+    if (isNaN(d) || isNaN(h) || isNaN(slope)) return;
+    renderStos(d, h, slope);
+  });
+}
+
+// ---------------- Kona logic (half pattern with auto rotation) ----------------
   function computeObliqueConeTriangulation(topD, botD, angleDeg, segments = 6, extraMm = 30, rotDeg = 0) {
     const R2 = topD / 2;
     const R1 = botD / 2;
@@ -180,35 +245,65 @@
     return best;
   }
 
-  function renderKona(topD, botD, angleDeg) {
+  
+function renderKona(topD, botD, angleDeg) {
     const rot = findBestRotation(topD, botD, angleDeg);
     const dev = computeObliqueConeTriangulation(topD, botD, angleDeg, 6, 30, rot);
     const { inner, outer } = dev;
-    const all = outer.concat(inner);
+
+    // bounding box
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const [x, y] of all) { if (x < minX) minX = x; if (y < minY) minY = y; if (x > maxX) maxX = x; if (y > maxY) maxY = y; }
+    for (const [x, y] of inner.concat(outer)) {
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
     const margin = 10;
     const dx = -minX + margin;
     const dy = -minY + margin;
-    const w = maxX - minX + 2 * margin;
-    const h = maxY - minY + 2 * margin;
-    const fmt = (x, y) => `${(x + dx).toFixed(2)},${(y + dy).toFixed(2)}`;
-    const polyOuter = outer.map(([x, y]) => fmt(x, y)).join(" ");
-    const polyInner = inner.map(([x, y]) => fmt(x, y)).join(" ");
-    let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w.toFixed(2)}mm" height="${h.toFixed(2)}mm" viewBox="0 0 ${w.toFixed(2)} ${h.toFixed(2)}" shape-rendering="geometricPrecision">`;
+    const w = (maxX - minX) + 2 * margin;
+    const h = (maxY - minY) + 2 * margin;
+
+    const fmtPt = (x, y) => `${(x + dx).toFixed(2)},${(y + dy).toFixed(2)}`;
+    const polyOuter = outer.map(([x, y]) => fmtPt(x, y)).join(" ");
+    const polyInner = inner.map(([x, y]) => fmtPt(x, y)).join(" ");
+
+    // Build SVG
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w.toFixed(2)}mm" height="${h.toFixed(2)}mm" viewBox="0 0 ${w.toFixed(2)} ${h.toFixed(2)}" shape-rendering="geometricPrecision" font-size="4">`;
     svg += `<polyline points="${polyOuter}" fill="none" stroke="black" stroke-width="0.35"/>`;
     svg += `<polyline points="${polyInner}" fill="none" stroke="black" stroke-width="0.35"/>`;
+    // generator lines + segment labels
+    function mid(ax,ay,bx,by){ return [(ax+bx)/2,(ay+by)/2]; }
+    function interp(ax,ay,bx,by,t){ return [ax + (bx-ax)*t, ay + (by-ay)*t]; }
+
     for (let i = 0; i < inner.length; i++) {
       const xi = inner[i][0] + dx, yi = inner[i][1] + dy;
       const xo = outer[i][0] + dx, yo = outer[i][1] + dy;
       svg += `<line x1="${xi.toFixed(2)}" y1="${yi.toFixed(2)}" x2="${xo.toFixed(2)}" y2="${yo.toFixed(2)}" stroke="black" stroke-width="0.35"/>`;
     }
+    for (let i = 0; i < inner.length - 1; i++) {
+      const xi1 = inner[i][0] + dx, yi1 = inner[i][1] + dy;
+      const xi2 = inner[i+1][0] + dx, yi2 = inner[i+1][1] + dy;
+      const xo1 = outer[i][0] + dx, yo1 = outer[i][1] + dy;
+      const xo2 = outer[i+1][0] + dx, yo2 = outer[i+1][1] + dy;
+      const li = Math.hypot(xi2 - xi1, yi2 - yi1);
+      const lo = Math.hypot(xo2 - xo1, yo2 - yo1);
+      const [mix, miy] = mid(xi1, yi1, xi2, yi2);
+      const [mox, moy] = mid(xo1, yo1, xo2, yo2);
+      const [pinx, piny] = interp(mix, miy, mox, moy, 0.35);
+      const [poutx, pouty] = interp(mix, miy, mox, moy, 0.65);
+      svg += `<text x="${pinx.toFixed(2)}" y="${piny.toFixed(2)}" fill="blue" text-anchor="middle" dominant-baseline="middle">${li.toFixed(1)}</text>`;
+      svg += `<text x="${poutx.toFixed(2)}" y="${pouty.toFixed(2)}" fill="red" text-anchor="middle" dominant-baseline="middle">${lo.toFixed(1)}</text>`;
+    }
+
     svg += `</svg>`;
     $("konaPreview").innerHTML = svg;
     $("konaMeta").textContent = `Kona (halvmönster, auto rotation ${rot}°): ToppØ=${topD} mm, BottenØ=${botD} mm, Vinkel=${angleDeg}°`;
     $("konaResult").style.display = "block";
     hookExport("konaPreview", "konaSvg", "konaPdf", "konaPrint");
   }
+
 
   // ---------------- Tabs ----------------
   document.querySelectorAll(".tab-btn").forEach((btn) => {
@@ -233,4 +328,22 @@
       renderKona(topD, botD, slopeDeg);
     });
   }
+})(
+
+// Tab switching
+document.addEventListener("DOMContentLoaded", () => {
+  const btns = document.querySelectorAll(".tab-btn");
+  const tabs = document.querySelectorAll(".tab");
+  btns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      btns.forEach((b) => b.classList.remove("active"));
+      tabs.forEach((t) => t.classList.remove("active"));
+      btn.classList.add("active");
+      const targetId = "tab-" + btn.dataset.tab;
+      const target = document.getElementById(targetId);
+      if (target) target.classList.add("active");
+    });
+  });
+});
+
 })();
