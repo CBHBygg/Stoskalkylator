@@ -168,23 +168,22 @@
     }
 
     if (btnPdf) {
-  btnPdf.addEventListener("click", async () => {
-    const { jsPDF, svg2pdf } = getLibs();
-    const svg = preview.querySelector("svg");
-    if (!jsPDF || !svg2pdf || !svg) return alert("PDF-export saknar jsPDF/svg2pdf.");
-    const doc = new jsPDF({ unit: "mm", format: "a4" });
-    const margin = A4.marginMm;
-    await svg2pdf(svg, doc, {
-      x: margin,
-      y: margin,
-      width: A4.wMm - 2 * margin,
-      height: A4.hMm - 2 * margin,
-      useCSS: true,
+    btnPdf.addEventListener("click", async () => {
+      const { jsPDF, svg2pdf } = getLibs();
+      const svg = preview.querySelector("svg");
+      if (!jsPDF || !svg2pdf || !svg) return alert("PDF-export saknar jsPDF/svg2pdf.");
+      const doc = new jsPDF({ unit: "mm", format: "a4" });
+      const margin = A4.marginMm;
+      await svg2pdf(svg, doc, {
+        x: margin,
+        y: margin,
+        width: A4.wMm - 2 * margin,
+        height: A4.hMm - 2 * margin,
+        useCSS: true,
+      });
+      doc.save("kona.pdf");
     });
-    doc.save("kona.pdf");
-  });
-}
-    }
+  }
 
     if (btnPrint) {
       btnPrint.addEventListener("click", () => window.print());
