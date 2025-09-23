@@ -1,4 +1,3 @@
-
 (function(){
   "use strict";
 
@@ -6,20 +5,14 @@
   const A4 = { wMm: 210, hMm: 297, marginMm: 5 };
 
   function getLibs() {
-    const jsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+    const { jsPDF } = window.jspdf || {};
     let s = null;
-    if (typeof window.svg2pdf === "function") s = window.svg2pdf;
-    else if (window.svg2pdf && typeof window.svg2pdf.svg2pdf === "function") s = window.svg2pdf.svg2pdf;
-    else if (typeof window.SVG2PDF === "function") s = window.SVG2PDF;
-    else if (window.SVG2PDF && typeof window.SVG2PDF.svg2pdf === "function") s = window.SVG2PDF.svg2pdf;
+    if (typeof window.svg2pdf === "function") {
+      s = window.svg2pdf;
+    } else if (window.svg2pdf && typeof window.svg2pdf.svg2pdf === "function") {
+      s = window.svg2pdf.svg2pdf;
+    }
     return { jsPDF, svg2pdf: s };
-  }
-
-  function parseMm(val) {
-    if (val == null) return NaN;
-    if (typeof val === "number") return val;
-    const s = String(val).trim();
-    return parseFloat(s.replace("mm",""));
   }
 
   // --- Triangulation ---
@@ -116,72 +109,6 @@
     return parts.join("");
   }
 
-  // -------- Tiled PDF export at 1:1 mm with margins --------
-  function parseMm(val) {
-    if (val == null) return NaN;
-    if (typeof val === "number") return val;
-    const s = String(val).trim();
-    return parseFloat(s.replace("mm",""));
-  }
-
-  async function exportKonaPDF(svg) {
-    const { jsPDF, svg2pdf } = getLibs();
-    if (!jsPDF || !svg2pdf) return alert("PDF-export saknar jsPDF/svg2pdf.");
-    if (!svg) return alert("Ingen SVG att exportera.");
-
-    const svgW = parseMm(svg.getAttribute("width"));
-    const svgH = parseMm(svg.getAttribute("height"));
-    if (!isFinite(svgW) || !isFinite(svgH)) { alert("SVG saknar mm-storlek."); return; }
-
-    const doc = new jsPDF({ unit: "mm", format: "a4" });
-    const margin = A4.marginMm;
-    const pageW = A4.wMm - 2 * margin;
-    const pageH = A4.hMm - 2 * margin;
-
-    const cols = Math.max(1, Math.ceil(svgW / pageW));
-    const rows = Math.max(1, Math.ceil(svgH / pageH));
-
-    function buildTile(xMm, yMm, wMm, hMm) {
-  const ns = "http://www.w3.org/2000/svg";
-  const tile = document.createElementNS(ns, "svg");
-  tile.setAttribute("xmlns", ns);
-  tile.setAttribute("width", wMm + "mm");
-  tile.setAttribute("height", hMm + "mm");
-  tile.setAttribute("viewBox", `0 0 ${wMm} ${hMm}`);
-
-  // account for source viewBox offset (minX, minY)
-  let vbX = 0, vbY = 0;
-  const vb = svg.viewBox && svg.viewBox.baseVal ? svg.viewBox.baseVal : null;
-  if (vb) { vbX = vb.x || 0; vbY = vb.y || 0; }
-
-  const defs = document.createElementNS(ns, "defs");
-  const clipPath = document.createElementNS(ns, "clipPath");
-  const clipId = `clip_${Math.random().toString(36).slice(2)}`;
-  clipPath.setAttribute("id", clipId);
-  const rect = document.createElementNS(ns, "rect");
-  rect.setAttribute("x", "0");
-  rect.setAttribute("y", "0");
-  rect.setAttribute("width", String(wMm));
-  rect.setAttribute("height", String(hMm));
-  clipPath.appendChild(rect);
-  defs.appendChild(clipPath);
-  tile.appendChild(defs);
-
-  const g = document.createElementNS(ns, "g");
-  g.setAttribute("clip-path", `url(#${clipId})`);
-  g.setAttribute("transform", `translate(${-xMm - vbX},${-yMm - vbY})`);
-
-  for (let n = svg.firstChild; n; n = n.nextSibling) {
-    if (n.nodeType === 1) g.appendChild(n.cloneNode(true));
-  }
-  tile.appendChild(g);
-  return tile;
-}
-
-
-    doc.save("kona.pdf");
-  }
-
   // --- Hook UI ---
   function hookKona() {
     const form = $("konaForm");
@@ -215,20 +142,16 @@
       if (result) result.style.display = "block";
     });
 
-    if (rotSlider) {
-      rotSlider.addEventListener("input", (e) => {
-        rot = parseInt(e.target.value || "0", 10) || 0;
-        if (rotInput) rotInput.value = String(rot);
-        draw();
-      });
-    }
-    if (rotInput) {
-      rotInput.addEventListener("input", (e) => {
-        rot = parseInt(e.target.value || "0", 10) || 0;
-        if (rotSlider) rotSlider.value = String(rot);
-        draw();
-      });
-    }
+    if (rotSlider) rotSlider.addEventListener("input", (e) => {
+      rot = parseInt(e.target.value || "0", 10) || 0;
+      if (rotInput) rotInput.value = String(rot);
+      draw();
+    });
+    if (rotInput) rotInput.addEventListener("input", (e) => {
+      rot = parseInt(e.target.value || "0", 10) || 0;
+      if (rotSlider) rotSlider.value = String(rot);
+      draw();
+    });
 
     if (btnSvg) {
       btnSvg.addEventListener("click", () => {
@@ -245,11 +168,22 @@
     }
 
     if (btnPdf) {
-      btnPdf.addEventListener("click", async () => {
-        const svg = preview.querySelector("svg");
-        await exportKonaPDF(svg);
+    btnPdf.addEventListener("click", async () => {
+      const { jsPDF, svg2pdf } = getLibs();
+      const svg = preview.querySelector("svg");
+      if (!jsPDF || !svg2pdf || !svg) return alert("PDF-export saknar jsPDF/svg2pdf.");
+      const doc = new jsPDF({ unit: "mm", format: "a4" });
+      const margin = A4.marginMm;
+      await svg2pdf(svg, doc, {
+        x: margin,
+        y: margin,
+        width: A4.wMm - 2 * margin,
+        height: A4.hMm - 2 * margin,
+        useCSS: true,
       });
-    }
+      doc.save("kona.pdf");
+    });
+  }
 
     if (btnPrint) {
       btnPrint.addEventListener("click", () => window.print());
