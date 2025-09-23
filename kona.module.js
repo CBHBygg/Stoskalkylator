@@ -142,54 +142,42 @@
     const rows = Math.max(1, Math.ceil(svgH / pageH));
 
     function buildTile(xMm, yMm, wMm, hMm) {
-      const ns = "http://www.w3.org/2000/svg";
-      const tile = document.createElementNS(ns, "svg");
-      tile.setAttribute("xmlns", ns);
-      tile.setAttribute("width", wMm + "mm");
-      tile.setAttribute("height", hMm + "mm");
-      tile.setAttribute("viewBox", `0 0 ${wMm} ${hMm}`);
+  const ns = "http://www.w3.org/2000/svg";
+  const tile = document.createElementNS(ns, "svg");
+  tile.setAttribute("xmlns", ns);
+  tile.setAttribute("width", wMm + "mm");
+  tile.setAttribute("height", hMm + "mm");
+  tile.setAttribute("viewBox", `0 0 ${wMm} ${hMm}`);
 
-      const defs = document.createElementNS(ns, "defs");
-      const clipPath = document.createElementNS(ns, "clipPath");
-      const clipId = `clip_${Math.random().toString(36).slice(2)}`;
-      clipPath.setAttribute("id", clipId);
-      const rect = document.createElementNS(ns, "rect");
-      rect.setAttribute("x", "0");
-      rect.setAttribute("y", "0");
-      rect.setAttribute("width", String(wMm));
-      rect.setAttribute("height", String(hMm));
-      clipPath.appendChild(rect);
-      defs.appendChild(clipPath);
-      tile.appendChild(defs);
+  // account for source viewBox offset (minX, minY)
+  let vbX = 0, vbY = 0;
+  const vb = svg.viewBox && svg.viewBox.baseVal ? svg.viewBox.baseVal : null;
+  if (vb) { vbX = vb.x || 0; vbY = vb.y || 0; }
 
-      const g = document.createElementNS(ns, "g");
-      g.setAttribute("clip-path", `url(#${clipId})`);
-      g.setAttribute("transform", `translate(${-xMm},${-yMm})`);
+  const defs = document.createElementNS(ns, "defs");
+  const clipPath = document.createElementNS(ns, "clipPath");
+  const clipId = `clip_${Math.random().toString(36).slice(2)}`;
+  clipPath.setAttribute("id", clipId);
+  const rect = document.createElementNS(ns, "rect");
+  rect.setAttribute("x", "0");
+  rect.setAttribute("y", "0");
+  rect.setAttribute("width", String(wMm));
+  rect.setAttribute("height", String(hMm));
+  clipPath.appendChild(rect);
+  defs.appendChild(clipPath);
+  tile.appendChild(defs);
 
-      for (let n = svg.firstChild; n; n = n.nextSibling) {
-        if (n.nodeType === 1) g.appendChild(n.cloneNode(true));
-      }
-      tile.appendChild(g);
-      return tile;
-    }
+  const g = document.createElementNS(ns, "g");
+  g.setAttribute("clip-path", `url(#${clipId})`);
+  g.setAttribute("transform", `translate(${-xMm - vbX},${-yMm - vbY})`);
 
-    let first = true;
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        if (!first) doc.addPage();
-        first = false;
-        const xMm = c * pageW;
-        const yMm = r * pageH;
-        const tileSvg = buildTile(xMm, yMm, Math.min(pageW, svgW - xMm), Math.min(pageH, svgH - yMm));
-        await svg2pdf(tileSvg, doc, {
-          x: margin,
-          y: margin,
-          width: pageW,
-          height: pageH,
-          useCSS: true
-        });
-      }
-    }
+  for (let n = svg.firstChild; n; n = n.nextSibling) {
+    if (n.nodeType === 1) g.appendChild(n.cloneNode(true));
+  }
+  tile.appendChild(g);
+  return tile;
+}
+
 
     doc.save("kona.pdf");
   }
