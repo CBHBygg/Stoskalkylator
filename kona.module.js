@@ -1,26 +1,23 @@
 (function(){
   "use strict";
 
-  // --------- Small helpers (scoped) ---------
   const $ = (id) => document.getElementById(id);
   const mmToPt = (mm) => (mm * 72.0) / 25.4;
   const A4 = { wMm: 210, hMm: 297, marginMm: 5 };
 
   function getLibs() {
     const jsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
-    const svg2pdf = window.svg2pdf || window.SVG2PDF || (window.svg2pdf && window.svg2pdf.default);
-    if (!jsPDF || !svg2pdf) return null;
+    const svg2pdf = window.svg2pdf; // fixed: always the global function
     return { jsPDF, svg2pdf };
   }
 
-  // --------- Triangulation (final logic) ---------
+  // --- Triangulation ---
   function computeKonaTriangulation(topD, botD, angleDeg, segments = 6, extraMm = 30, rotDeg = 0) {
     const R2 = topD / 2;
     const R1 = botD / 2;
     const T = Math.tan((angleDeg * Math.PI) / 180);
     const E = extraMm;
 
-    // Solve for vertical height H
     const B = E + T * (R1 + R2);
     const C = E * T * (R1 - R2);
     const H = 0.5 * (B + Math.sqrt(B * B + 4 * C));
@@ -68,7 +65,7 @@
     return { inner, outer, gens };
   }
 
-  // --------- Render SVG (mm sizing, 1:1) ---------
+  // --- Render with segment lengths ---
   function renderKonaSVG(topD, botD, slopeDeg, rotDeg = 0) {
     const { inner, outer, gens } = computeKonaTriangulation(topD, botD, slopeDeg, 6, 30, rotDeg);
     const all = inner.concat(outer);
@@ -82,17 +79,31 @@
     const path = (pts) => `M ${pts.map(fmt).join(" L ")}`;
 
     const parts = [];
-    parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w.toFixed(1)}mm" height="${h.toFixed(1)}mm" viewBox="${minX.toFixed(2)} ${minY.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)}" shape-rendering="geometricPrecision">`);
+    parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w.toFixed(1)}mm" height="${h.toFixed(1)}mm" viewBox="${minX.toFixed(2)} ${minY.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)}" font-size="5">`);
     parts.push(`<path d="${path(inner)}" fill="none" stroke="black" stroke-width="0.35"/>`);
     parts.push(`<path d="${path(outer)}" fill="none" stroke="black" stroke-width="0.35"/>`);
     gens.forEach(([i, o]) => {
       parts.push(`<line x1="${i[0].toFixed(2)}" y1="${i[1].toFixed(2)}" x2="${o[0].toFixed(2)}" y2="${o[1].toFixed(2)}" stroke="black" stroke-width="0.2"/>`);
     });
+
+    // Segment lengths
+    function mid(p1, p2) { return [(p1[0]+p2[0])/2, (p1[1]+p2[1])/2]; }
+    for (let i=0; i<inner.length-1; i++) {
+      const l = Math.hypot(inner[i+1][0]-inner[i][0], inner[i+1][1]-inner[i][1]);
+      const [mx,my] = mid(inner[i], inner[i+1]);
+      parts.push(`<text x="${mx.toFixed(2)}" y="${my.toFixed(2)}" fill="blue" text-anchor="middle">${l.toFixed(1)}</text>`);
+    }
+    for (let i=0; i<outer.length-1; i++) {
+      const l = Math.hypot(outer[i+1][0]-outer[i][0], outer[i+1][1]-outer[i][1]);
+      const [mx,my] = mid(outer[i], outer[i+1]);
+      parts.push(`<text x="${mx.toFixed(2)}" y="${my.toFixed(2)}" fill="red" text-anchor="middle">${l.toFixed(1)}</text>`);
+    }
+
     parts.push(`</svg>`);
     return parts.join("");
   }
 
-  // --------- Attach to Kona UI ---------
+  // --- Hook UI ---
   function hookKona() {
     const form = $("konaForm");
     const preview = $("konaPreview");
@@ -156,10 +167,9 @@
 
     if (btnPdf) {
       btnPdf.addEventListener("click", () => {
-        const libs = getLibs();
+        const { jsPDF, svg2pdf } = getLibs();
         const svg = preview.querySelector("svg");
-        if (!libs || !svg) return alert("PDF-export saknar jsPDF/svg2pdf.");
-        const { jsPDF, svg2pdf } = libs;
+        if (!jsPDF || !svg2pdf || !svg) return alert("PDF-export saknar jsPDF/svg2pdf.");
         const doc = new jsPDF({ unit: "pt", format: "a4" });
         const margin = mmToPt(A4.marginMm);
         svg2pdf(svg, doc, {
