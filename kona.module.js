@@ -6,17 +6,13 @@
   const A4 = { wMm: 210, hMm: 297, marginMm: 5 };
 
   function getLibs() {
-    const jsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
-    // Robust svg2pdf resolution across UMD variants
-    let s = window.svg2pdf || window.SVG2PDF || (window.svg2pdf && window.svg2pdf.svg2pdf);
-    if (s && typeof s !== "function") {
-      if (typeof s.default === "function") s = s.default;
-      else if (typeof s.svg2pdf === "function") s = s.svg2pdf;
-    }
+    const { jsPDF } = window.jspdf || {};
+    // Robust resolution of svg2pdf no matter how the UMD bundle exports
+    let s = window.svg2pdf || window.SVG2PDF || (window.svg2pdf && window.svg2pdf.default);
     return { jsPDF, svg2pdf: s };
   }
 
-  // --- Triangulation ---
+  // --- Triangulation (unchanged) ---
   function computeKonaTriangulation(topD, botD, angleDeg, segments = 6, extraMm = 30, rotDeg = 0) {
     const R2 = topD / 2;
     const R1 = botD / 2;
@@ -70,11 +66,11 @@
     return { inner, outer, gens };
   }
 
-  // --- Helpers for labeling inside segments ---
+  // --- Helpers for labeling ---
   function midpoint(a, b) { return [(a[0]+b[0])/2, (a[1]+b[1])/2]; }
   function interp(a, b, t) { return [a[0] + (b[0]-a[0])*t, a[1] + (b[1]-a[1])*t]; }
 
-  // --- Render with segment lengths INSIDE wedges ---
+  // --- Render with segment lengths inside wedges ---
   function renderKonaSVG(topD, botD, slopeDeg, rotDeg = 0) {
     const { inner, outer, gens } = computeKonaTriangulation(topD, botD, slopeDeg, 6, 30, rotDeg);
     const all = inner.concat(outer);
@@ -97,17 +93,14 @@
       parts.push(`<line x1="${i[0].toFixed(2)}" y1="${i[1].toFixed(2)}" x2="${o[0].toFixed(2)}" y2="${o[1].toFixed(2)}" stroke="black" stroke-width="0.2"/>`);
     });
 
-    // Segment lengths positioned inside each wedge
+    // Segment lengths inside
     for (let i=0; i<inner.length-1; i++) {
       const li = Math.hypot(inner[i+1][0]-inner[i][0], inner[i+1][1]-inner[i][1]);
       const lo = Math.hypot(outer[i+1][0]-outer[i][0], outer[i+1][1]-outer[i][1]);
       const mi = midpoint(inner[i], inner[i+1]);
       const mo = midpoint(outer[i], outer[i+1]);
-
-      // place the inner length closer to inner arc, outer closer to outer arc
       const pInner = interp(mi, mo, 0.35);
       const pOuter = interp(mi, mo, 0.65);
-
       parts.push(`<text x="${pInner[0].toFixed(2)}" y="${pInner[1].toFixed(2)}" fill="blue" text-anchor="middle" dominant-baseline="middle">${li.toFixed(1)}</text>`);
       parts.push(`<text x="${pOuter[0].toFixed(2)}" y="${pOuter[1].toFixed(2)}" fill="red" text-anchor="middle" dominant-baseline="middle">${lo.toFixed(1)}</text>`);
     }
@@ -149,20 +142,16 @@
       if (result) result.style.display = "block";
     });
 
-    if (rotSlider) {
-      rotSlider.addEventListener("input", (e) => {
-        rot = parseInt(e.target.value || "0", 10) || 0;
-        if (rotInput) rotInput.value = String(rot);
-        draw();
-      });
-    }
-    if (rotInput) {
-      rotInput.addEventListener("input", (e) => {
-        rot = parseInt(e.target.value || "0", 10) || 0;
-        if (rotSlider) rotSlider.value = String(rot);
-        draw();
-      });
-    }
+    if (rotSlider) rotSlider.addEventListener("input", (e) => {
+      rot = parseInt(e.target.value || "0", 10) || 0;
+      if (rotInput) rotInput.value = String(rot);
+      draw();
+    });
+    if (rotInput) rotInput.addEventListener("input", (e) => {
+      rot = parseInt(e.target.value || "0", 10) || 0;
+      if (rotSlider) rotSlider.value = String(rot);
+      draw();
+    });
 
     if (btnSvg) {
       btnSvg.addEventListener("click", () => {
@@ -183,13 +172,13 @@
         const { jsPDF, svg2pdf } = getLibs();
         const svg = preview.querySelector("svg");
         if (!jsPDF || !svg2pdf || !svg) return alert("PDF-export saknar jsPDF/svg2pdf.");
-        const doc = new jsPDF({ unit: "pt", format: "a4" });
-        const margin = mmToPt(A4.marginMm);
+        const doc = new jsPDF({ unit: "mm", format: "a4" }); // mm ensures correct scale
+        const margin = A4.marginMm;
         svg2pdf(svg, doc, {
           x: margin,
           y: margin,
-          width: doc.internal.pageSize.getWidth() - 2 * margin,
-          height: doc.internal.pageSize.getHeight() - 2 * margin,
+          width: A4.wMm - 2 * margin,
+          height: A4.hMm - 2 * margin,
           useCSS: true,
         });
         doc.save("kona.pdf");
