@@ -7,8 +7,13 @@
 
   function getLibs() {
     const jsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
-    const svg2pdf = window.svg2pdf; // fixed: always the global function
-    return { jsPDF, svg2pdf };
+    // Robust svg2pdf resolution across UMD variants
+    let s = window.svg2pdf || window.SVG2PDF || (window.svg2pdf && window.svg2pdf.svg2pdf);
+    if (s && typeof s !== "function") {
+      if (typeof s.default === "function") s = s.default;
+      else if (typeof s.svg2pdf === "function") s = s.svg2pdf;
+    }
+    return { jsPDF, svg2pdf: s };
   }
 
   // --- Triangulation ---
@@ -65,7 +70,11 @@
     return { inner, outer, gens };
   }
 
-  // --- Render with segment lengths ---
+  // --- Helpers for labeling inside segments ---
+  function midpoint(a, b) { return [(a[0]+b[0])/2, (a[1]+b[1])/2]; }
+  function interp(a, b, t) { return [a[0] + (b[0]-a[0])*t, a[1] + (b[1]-a[1])*t]; }
+
+  // --- Render with segment lengths INSIDE wedges ---
   function renderKonaSVG(topD, botD, slopeDeg, rotDeg = 0) {
     const { inner, outer, gens } = computeKonaTriangulation(topD, botD, slopeDeg, 6, 30, rotDeg);
     const all = inner.concat(outer);
@@ -79,24 +88,28 @@
     const path = (pts) => `M ${pts.map(fmt).join(" L ")}`;
 
     const parts = [];
-    parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w.toFixed(1)}mm" height="${h.toFixed(1)}mm" viewBox="${minX.toFixed(2)} ${minY.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)}" font-size="5">`);
+    parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w.toFixed(1)}mm" height="${h.toFixed(1)}mm" viewBox="${minX.toFixed(2)} ${minY.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)}" font-size="4">`);
+    // arcs
     parts.push(`<path d="${path(inner)}" fill="none" stroke="black" stroke-width="0.35"/>`);
     parts.push(`<path d="${path(outer)}" fill="none" stroke="black" stroke-width="0.35"/>`);
+    // generators
     gens.forEach(([i, o]) => {
       parts.push(`<line x1="${i[0].toFixed(2)}" y1="${i[1].toFixed(2)}" x2="${o[0].toFixed(2)}" y2="${o[1].toFixed(2)}" stroke="black" stroke-width="0.2"/>`);
     });
 
-    // Segment lengths
-    function mid(p1, p2) { return [(p1[0]+p2[0])/2, (p1[1]+p2[1])/2]; }
+    // Segment lengths positioned inside each wedge
     for (let i=0; i<inner.length-1; i++) {
-      const l = Math.hypot(inner[i+1][0]-inner[i][0], inner[i+1][1]-inner[i][1]);
-      const [mx,my] = mid(inner[i], inner[i+1]);
-      parts.push(`<text x="${mx.toFixed(2)}" y="${my.toFixed(2)}" fill="blue" text-anchor="middle">${l.toFixed(1)}</text>`);
-    }
-    for (let i=0; i<outer.length-1; i++) {
-      const l = Math.hypot(outer[i+1][0]-outer[i][0], outer[i+1][1]-outer[i][1]);
-      const [mx,my] = mid(outer[i], outer[i+1]);
-      parts.push(`<text x="${mx.toFixed(2)}" y="${my.toFixed(2)}" fill="red" text-anchor="middle">${l.toFixed(1)}</text>`);
+      const li = Math.hypot(inner[i+1][0]-inner[i][0], inner[i+1][1]-inner[i][1]);
+      const lo = Math.hypot(outer[i+1][0]-outer[i][0], outer[i+1][1]-outer[i][1]);
+      const mi = midpoint(inner[i], inner[i+1]);
+      const mo = midpoint(outer[i], outer[i+1]);
+
+      // place the inner length closer to inner arc, outer closer to outer arc
+      const pInner = interp(mi, mo, 0.35);
+      const pOuter = interp(mi, mo, 0.65);
+
+      parts.push(`<text x="${pInner[0].toFixed(2)}" y="${pInner[1].toFixed(2)}" fill="blue" text-anchor="middle" dominant-baseline="middle">${li.toFixed(1)}</text>`);
+      parts.push(`<text x="${pOuter[0].toFixed(2)}" y="${pOuter[1].toFixed(2)}" fill="red" text-anchor="middle" dominant-baseline="middle">${lo.toFixed(1)}</text>`);
     }
 
     parts.push(`</svg>`);
@@ -175,8 +188,9 @@
         svg2pdf(svg, doc, {
           x: margin,
           y: margin,
-          width: mmToPt(A4.wMm - 2 * A4.marginMm),
-          height: mmToPt(A4.hMm - 2 * A4.marginMm),
+          width: doc.internal.pageSize.getWidth() - 2 * margin,
+          height: doc.internal.pageSize.getHeight() - 2 * margin,
+          useCSS: true,
         });
         doc.save("kona.pdf");
       });
