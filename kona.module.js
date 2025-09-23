@@ -2,22 +2,20 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const mmToPt = (mm) => (mm * 72.0) / 25.4;
   const A4 = { wMm: 210, hMm: 297, marginMm: 5 };
 
   function getLibs() {
-  const { jsPDF } = window.jspdf || {};
-  // svg2pdf.umd.min.js exposes { svg2pdf: function }
-  let s = null;
-  if (typeof window.svg2pdf === "function") {
-    s = window.svg2pdf;
-  } else if (window.svg2pdf && typeof window.svg2pdf.svg2pdf === "function") {
-    s = window.svg2pdf.svg2pdf;
+    const { jsPDF } = window.jspdf || {};
+    let s = null;
+    if (typeof window.svg2pdf === "function") {
+      s = window.svg2pdf;
+    } else if (window.svg2pdf && typeof window.svg2pdf.svg2pdf === "function") {
+      s = window.svg2pdf.svg2pdf;
+    }
+    return { jsPDF, svg2pdf: s };
   }
-  return { jsPDF, svg2pdf: s };
-}
 
-  // --- Triangulation (unchanged) ---
+  // --- Triangulation ---
   function computeKonaTriangulation(topD, botD, angleDeg, segments = 6, extraMm = 30, rotDeg = 0) {
     const R2 = topD / 2;
     const R1 = botD / 2;
@@ -71,11 +69,11 @@
     return { inner, outer, gens };
   }
 
-  // --- Helpers for labeling ---
+  // --- Helpers ---
   function midpoint(a, b) { return [(a[0]+b[0])/2, (a[1]+b[1])/2]; }
   function interp(a, b, t) { return [a[0] + (b[0]-a[0])*t, a[1] + (b[1]-a[1])*t]; }
 
-  // --- Render with segment lengths inside wedges ---
+  // --- Render with labels inside ---
   function renderKonaSVG(topD, botD, slopeDeg, rotDeg = 0) {
     const { inner, outer, gens } = computeKonaTriangulation(topD, botD, slopeDeg, 6, 30, rotDeg);
     const all = inner.concat(outer);
@@ -90,15 +88,12 @@
 
     const parts = [];
     parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w.toFixed(1)}mm" height="${h.toFixed(1)}mm" viewBox="${minX.toFixed(2)} ${minY.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)}" font-size="4">`);
-    // arcs
     parts.push(`<path d="${path(inner)}" fill="none" stroke="black" stroke-width="0.35"/>`);
     parts.push(`<path d="${path(outer)}" fill="none" stroke="black" stroke-width="0.35"/>`);
-    // generators
     gens.forEach(([i, o]) => {
       parts.push(`<line x1="${i[0].toFixed(2)}" y1="${i[1].toFixed(2)}" x2="${o[0].toFixed(2)}" y2="${o[1].toFixed(2)}" stroke="black" stroke-width="0.2"/>`);
     });
 
-    // Segment lengths inside
     for (let i=0; i<inner.length-1; i++) {
       const li = Math.hypot(inner[i+1][0]-inner[i][0], inner[i+1][1]-inner[i][1]);
       const lo = Math.hypot(outer[i+1][0]-outer[i][0], outer[i+1][1]-outer[i][1]);
@@ -173,19 +168,12 @@
     }
 
     if (btnPdf) {
-      btnPdf.addEventListener("click", () => {
+      btnPdf.addEventListener("click", async () => {
         const { jsPDF, svg2pdf } = getLibs();
         const svg = preview.querySelector("svg");
         if (!jsPDF || !svg2pdf || !svg) return alert("PDF-export saknar jsPDF/svg2pdf.");
-        const doc = new jsPDF({ unit: "mm", format: "a4" }); // mm ensures correct scale
-        const margin = A4.marginMm;
-        svg2pdf(svg, doc, {
-          x: margin,
-          y: margin,
-          width: A4.wMm - 2 * margin,
-          height: A4.hMm - 2 * margin,
-          useCSS: true,
-        });
+        const doc = new jsPDF({ unit: "mm", format: "a4" });
+        await svg2pdf(svg, doc, { x: 0, y: 0 });
         doc.save("kona.pdf");
       });
     }
@@ -197,4 +185,3 @@
 
   document.addEventListener("DOMContentLoaded", hookKona);
 })();
-
