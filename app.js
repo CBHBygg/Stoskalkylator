@@ -8,14 +8,7 @@
 
   function getLibs() {
     const jsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
-    let svg2pdf = window.svg2pdf || window.SVG2PDF;
-    if (svg2pdf && typeof svg2pdf !== "function") {
-      if (typeof svg2pdf.default === "function") {
-        svg2pdf = svg2pdf.default;
-      } else if (svg2pdf.svg2pdf && typeof svg2pdf.svg2pdf === "function") {
-        svg2pdf = svg2pdf.svg2pdf;
-      }
-    }
+    let svg2pdf = window.svg2pdf;
     return { jsPDF, svg2pdf };
   }
 
@@ -62,32 +55,7 @@
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         if (r !== 0 || c !== 0) pdf.addPage();
-        const xMm = c * pageW;
-        const yMm = r * pageH;
         const clone = svg.cloneNode(true);
-        const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-        g.setAttribute("transform", `translate(${-xMm},${-yMm})`);
-        const clipId = `clip_${r}_${c}`;
-        const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
-        const clipPath = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
-        clipPath.setAttribute("id", clipId);
-        const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-        rect.setAttribute("x", xMm);
-        rect.setAttribute("y", yMm);
-        rect.setAttribute("width", pageW);
-        rect.setAttribute("height", pageH);
-        clipPath.appendChild(rect);
-        defs.appendChild(clipPath);
-        const originalBody = svg.querySelector("g") || svg;
-        const body = originalBody.cloneNode(true);
-        body.setAttribute("clip-path", `url(#${clipId})`);
-        g.appendChild(body);
-        clone.innerHTML = "";
-        clone.appendChild(defs);
-        clone.appendChild(g);
-        clone.setAttribute("width", pageW + "mm");
-        clone.setAttribute("height", pageH + "mm");
-        clone.setAttribute("viewBox", `0 0 ${pageW} ${pageH}`);
         await svg2pdf(clone, pdf, {
           x: marginPt,
           y: marginPt,
@@ -109,7 +77,7 @@
     if (printBtn) printBtn.onclick = () => window.print();
   }
 
-  // ---------------- Stos logic (restored arc length version) ----------------
+  // ---------------- Stos logic (restored + box with labels) ----------------
   function computeStos(d, h, slope, steps = 180) {
     const r = d / 2;
     const T = Math.tan((slope * Math.PI) / 180);
@@ -128,12 +96,19 @@
     const pts = computeStos(d, h, slope);
     const w = Math.PI * d / 2; // half circumference
     const maxH = Math.max(...pts.map((p) => p[1]));
+
     const svg = [
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${w}mm" height="${maxH}mm" viewBox="0 0 ${w} ${maxH}">`
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${w}mm" height="${maxH}mm" viewBox="0 0 ${w} ${maxH}" font-size="6">`
     ];
+    // Cutout path
     svg.push(
       `<path d="M ${pts.map((p) => `${p[0].toFixed(2)},${maxH - p[1].toFixed(2)}`).join(" L ")}" fill="none" stroke="black"/>`
     );
+    // Enclosing box
+    svg.push(`<rect x="0" y="0" width="${w}" height="${maxH}" fill="none" stroke="black" stroke-dasharray="4"/>`);
+    // Labels
+    svg.push(`<text x="${w/2}" y="12" text-anchor="middle" fill="blue">${w.toFixed(1)} mm</text>`);
+    svg.push(`<text x="${w-2}" y="${maxH/2}" text-anchor="end" dominant-baseline="middle" fill="blue">${maxH.toFixed(1)} mm</text>`);
     svg.push("</svg>");
     return svg.join("");
   }
