@@ -1,0 +1,28 @@
+body { font-family: Arial, sans-serif; margin: 0; background: #f5f5f5; color: #222; }
+header { background: #444; color: white; padding: 1em; display: flex; justify-content: space-between; align-items: center; }
+header h1 { margin: 0; font-size: 1.5em; }
+nav.tabs { display: flex; gap: 0.5em; }
+nav .tab { padding: 0.5em 1em; background: #666; border: none; color: white; cursor: pointer; border-radius: 4px 4px 0 0; font-size: 1em; }
+nav .tab.active { background: #f5f5f5; color: #222; border: 1px solid #ccc; border-bottom: none; }
+main { padding: 1em; }
+.tab-content { display: none; border: 1px solid #ccc; border-radius: 0 4px 4px 4px; background: #fff; padding: 1em; }
+.tab-content.active { display: block; }
+label { display: block; margin-top: 0.5em; }
+input { width: 100%; padding: 0.4em; font-size: 1em; margin-bottom: 0.5em; }
+button { margin-top: 0.5em; padding: 0.6em 1em; background: #444; color: white; border: none; border-radius: 4px; cursor: pointer; }
+button:hover { background: #333; }
+.preview { margin-top: 1em; }
+.svg-container {
+  background: white;
+  border: 1px solid #ddd;
+  width: 100%;
+  height: 400px;       /* still fixed height box */
+  overflow: scroll;    /* allow scrollbars if SVG is larger */
+}
+.svg-container svg {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+}
+footer { text-align: center; font-size: 0.8em; padding: 1em; background: #eee; margin-top: 1em; }

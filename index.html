@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Stoskalkylator</title>
+  <link rel="stylesheet" href="style.css"/>
+  <link rel="manifest" href="manifest.json"/>
+</head>
+<body>
+  <header>
+    <h1>Stoskalkylator</h1>
+    <nav class="tabs">
+      <button class="tab active" data-tab="stosTab">Stos (Cylinder)</button>
+      <button class="tab" data-tab="konaTab">Kona (Cone)</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- Stos Tab -->
+    <section id="stosTab" class="tab-content active">
+      <h2>Stos (Cylinder Cut)</h2>
+      <label for="stosDiameter">Diameter (mm):</label>
+      <input type="number" id="stosDiameter" value="110"/>
+      <label for="stosAngle">Angle (degrees):</label>
+      <input type="number" id="stosAngle" value="45"/>
+      <button id="genStos">Generate Pattern</button>
+
+      <div class="preview">
+        <h3>Preview</h3>
+        <div id="stosSvgContainer" class="svg-container"></div>
+        <button id="exportStos">Export PDF</button>
+      </div>
+    </section>
+
+    <!-- Kona Tab -->
+    <section id="konaTab" class="tab-content">
+      <h2>Kona (Truncated Cone Cut)</h2>
+      <label for="konaTop">Top Diameter (mm):</label>
+      <input type="number" id="konaTop" value="110"/>
+      <label for="konaBottom">Bottom Diameter (mm):</label>
+      <input type="number" id="konaBottom" value="130"/>
+      <label for="konaAngle">Angle (degrees):</label>
+      <input type="number" id="konaAngle" value="45"/>
+      <button id="genKona">Generate Pattern</button>
+
+      <div class="preview">
+        <h3>Preview</h3>
+        <div id="konaSvgContainer" class="svg-container"></div>
+        <button id="exportKona">Export PDF</button>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Offline-capable PWA for sheet-metal pattern drafting</p>
+  </footer>
+
+  <!-- Load jsPDF + svg2pdf.js (working versions) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/svg2pdf.js@2.0.0/dist/svg2pdf.umd.min.js"></script>
+
+
+  <!-- App logic -->
+  <script src="main.js"></script>
+</body>
+</html>
