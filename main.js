@@ -50,15 +50,15 @@ function generateStosSVG(diameter, angleDeg) {
   const R = diameter / 2;
   const angle = degToRad(angleDeg);
 
-  // Rise from lowest to highest point of angled cut
+  // Vertical difference between lowest and highest cut point
   const rise = R * Math.tan(angle);
 
-  // Curve offset for drawing (top offset)
+  // Curve offset for drawing
   const baseHeight = rise + 30;
 
-  // True rectangle height for labeling = full rise span + 30mm extra
+  // Bounding box height includes: bottom margin (rise) + curve span (rise) + top extension (30)
   const rectHeight = 2 * rise + 30;
-  const rectWidth = Math.PI * R; // full half circumference
+  const rectWidth = Math.PI * R; // half circumference
 
   // Points for curve (half pattern, 6 divisions)
   const N = 6;
@@ -66,16 +66,16 @@ function generateStosSVG(diameter, angleDeg) {
   for (let i = 0; i <= N; i++) {
     const phi = Math.PI * i / N;
     const x = (rectWidth / N) * i;
-    const y = baseHeight - rise * Math.cos(phi);
+    const y = baseHeight - rise * Math.cos(phi); // lifted curve
     pts.push([x, y]);
   }
 
   // Build curve path
   const path = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p[0].toFixed(2)},${p[1].toFixed(2)}`).join(" ");
 
-  // ViewBox size
+  // ViewBox
   const svgWidth = rectWidth + 40;
-  const svgHeight = rectHeight + 40; // include bottom + text margin
+  const svgHeight = rectHeight + 40;
 
   return `
 <svg xmlns="http://www.w3.org/2000/svg"
@@ -106,6 +106,7 @@ function generateStosSVG(diameter, angleDeg) {
   </text>
 </svg>`;
 }
+
 
 
 // ===== KONA (placeholder for now) =====
