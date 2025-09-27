@@ -46,62 +46,67 @@ document.getElementById("exportKona").addEventListener("click", () => {
 function degToRad(d) { return d * Math.PI / 180; }
 
 // ===== STOS (Half Pattern, Fixed Bounds) =====
-function generateStosSVG(d, angleDeg) {
+function generateStosSVG(diameter, angleDeg) {
+  const R = diameter / 2;
+  const angle = degToRad(angleDeg);
+
+  // Rise from lowest to highest point of angled cut
+  const rise = R * Math.tan(angle);
+
+  // Curve offset for drawing (top offset)
+  const baseHeight = rise + 30;
+
+  // True rectangle height for labeling = full rise span + 30mm extra
+  const rectHeight = 2 * rise + 30;
+  const rectWidth = Math.PI * R; // full half circumference
+
+  // Points for curve (half pattern, 6 divisions)
   const N = 6;
-  const width = Math.PI * d / 2;   // half circumference
-  const rise = (d / 2) * Math.tan(degToRad(angleDeg));
-  const height = rise + 30;
-
-  const dx = width / N;
-  let points = [];
-  let minY = Infinity, maxY = -Infinity;
-
+  let pts = [];
   for (let i = 0; i <= N; i++) {
     const phi = Math.PI * i / N;
-    const y = height - rise * Math.cos(phi);
-    const x = dx * i;
-    points.push([x, y]);
-    if (y < minY) minY = y;
-    if (y > maxY) maxY = y;
+    const x = (rectWidth / N) * i;
+    const y = baseHeight - rise * Math.cos(phi);
+    pts.push([x, y]);
   }
 
-  const svgHeight = maxY + 5; // pad bottom
+  // Build curve path
+  const path = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p[0].toFixed(2)},${p[1].toFixed(2)}`).join(" ");
 
-  let pathData = `M ${points[0][0]},${points[0][1]}`;
-  for (let i = 1; i < points.length; i++) {
-    pathData += ` L ${points[i][0]},${points[i][1]}`;
-  }
+  // ViewBox size
+  const svgWidth = rectWidth + 40;
+  const svgHeight = rectHeight + 40; // include bottom + text margin
 
   return `
 <svg xmlns="http://www.w3.org/2000/svg"
-     viewBox="0 0 ${width} ${svgHeight}"
-     preserveAspectRatio="xMidYMid meet"
-     width="100%" height="100%">
+     viewBox="-20 -20 ${svgWidth} ${svgHeight}"
+     width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+
   <!-- Bounding box -->
-  <rect x="0" y="0" width="${width}" height="${svgHeight}"
-        fill="none" stroke="#000" stroke-width="0.4"/>
-  <!-- Generator lines -->
-  <g stroke="#bbb" stroke-width="0.25" stroke-dasharray="3 2">
-    ${points.map(p => `<line x1="${p[0]}" y1="0" x2="${p[0]}" y2="${svgHeight}"/>`).join("")}
-  </g>
-  <!-- Cut curve -->
-  <path d="${pathData}" fill="none" stroke="#c00" stroke-width="0.6"/>
+  <rect x="0" y="0" width="${rectWidth.toFixed(2)}" height="${rectHeight.toFixed(2)}"
+        fill="none" stroke="#000" stroke-dasharray="4 2" stroke-width="0.4"/>
+
+  <!-- Curve -->
+  <path d="${path}" stroke="red" fill="none" stroke-width="0.6"/>
+
+  <!-- Generators -->
+  ${pts.map(p => `<line x1="${p[0].toFixed(2)}" y1="${p[1].toFixed(2)}" x2="${p[0].toFixed(2)}" y2="${rectHeight.toFixed(2)}"
+        stroke="#888" stroke-width="0.3" stroke-dasharray="2 2"/>`).join("")}
+
   <!-- Labels -->
-  <!-- Title: user inputs -->
-  <text x="${width/2}" y="12" font-size="6" text-anchor="middle">
-    Diameter: ${d} mm, Angle: ${angleDeg}°
+  <text x="${rectWidth/2}" y="${rectHeight + 15}" font-size="6" text-anchor="middle">
+    ${rectWidth.toFixed(1)} mm
   </text>
-  <!-- Width label (bottom center) -->
-  <text x="${width/2}" y="${svgHeight - 5}" font-size="6" text-anchor="middle">
-    ${width.toFixed(1)} mm
+  <text x="${rectWidth + 5}" y="${rectHeight/2}" font-size="6" text-anchor="start" dominant-baseline="middle"
+        transform="rotate(90, ${rectWidth + 5}, ${rectHeight/2})">
+    ${rectHeight.toFixed(1)} mm
   </text>
-  <!-- Height label (right edge, horizontal, centered vertically) -->
-  <text x="${width - 5}" y="${svgHeight/2}" font-size="6" text-anchor="end">
-    ${height.toFixed(1)} mm
+  <text x="${rectWidth/2}" y="-5" font-size="6" text-anchor="middle">
+    Stos — D ${diameter} mm, A ${angleDeg}°
   </text>
 </svg>`;
-
 }
+
 
 // ===== KONA (placeholder for now) =====
 function generateKonaSVG(topD, botD, angleDeg) {
